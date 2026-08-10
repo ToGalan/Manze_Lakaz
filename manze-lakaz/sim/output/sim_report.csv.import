@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://ddjraygfiplsg"
+
+[deps]
+
+files=["res://sim/output/sim_report.bot.translation", "res://sim/output/sim_report.category.translation", "res://sim/output/sim_report.key.translation", "res://sim/output/sim_report.value.translation"]
+
+source_file="res://sim/output/sim_report.csv"
+dest_files=["res://sim/output/sim_report.bot.translation", "res://sim/output/sim_report.category.translation", "res://sim/output/sim_report.key.translation", "res://sim/output/sim_report.value.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

@@ -1,0 +1,20 @@
+{
+    "total": 68,
+    "cards": [
+        { "id": "oil", "name": "Oil", "copies": 8 },
+        { "id": "island_spice_blend", "name": "Island Spice Blend", "copies": 7 },
+        { "id": "garlic", "name": "Garlic", "copies": 6 },
+        { "id": "chicken", "name": "Chicken", "copies": 5 },
+        { "id": "salt_pepper", "name": "Salt & Pepper", "copies": 5 },
+        { "id": "onion", "name": "Onion", "copies": 5 },
+        { "id": "chili", "name": "Chili", "copies": 5 },
+        { "id": "coconut_milk", "name": "Coconut Milk", "copies": 4 },
+        { "id": "fish", "name": "Fish", "copies": 4 },
+        { "id": "fresh_herbs", "name": "Fresh Herbs", "copies": 4 },
+        { "id": "tomato", "name": "Tomato", "copies": 3 },
+        { "id": "beef", "name": "Beef", "copies": 3 },
+        { "id": "goat", "name": "Goat", "copies": 3 },
+        { "id": "lime", "name": "Lime", "copies": 3 },
+        { "id": "eggs", "name": "Eggs", "copies": 3 }
+    ]
+}

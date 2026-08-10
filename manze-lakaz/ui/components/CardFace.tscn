@@ -1,0 +1,46 @@
+[gd_scene load_steps=2 format=3 uid="uid://b16m1v1x4k7yq"]
+
+[ext_resource type="Script" path="res://ui/components/CardFace.gd" id="1_cardface"]
+
+[node name="CardFace" type="Button"]
+custom_minimum_size = Vector2(110, 150)
+size_flags_horizontal = 0
+size_flags_vertical = 0
+focus_mode = 0
+text = ""
+script = ExtResource("1_cardface")
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 6
+
+[node name="Content" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="ArtSlot" type="TextureRect" parent="Margin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="NameLabel" type="Label" parent="Margin/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"MiniChipLabel"
+horizontal_alignment = 1
+autowrap_mode = 3
+text = "Card"

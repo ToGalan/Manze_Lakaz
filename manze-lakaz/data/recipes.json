@@ -1,0 +1,112 @@
+{
+    "cards": [
+        {
+            "id": "ikan_bakar",
+            "name": "Ikan Bakar",
+            "country": "Indonesia",
+            "tier": "quick",
+            "ingredients": ["fish", "oil", "salt_pepper", "island_spice_blend"],
+            "preparations": ["marinating"],
+            "uses_grill": true
+        },
+        {
+            "id": "nyama_choma",
+            "name": "Nyama Choma",
+            "country": "Kenya/Tanzania",
+            "tier": "quick",
+            "ingredients": ["goat", "salt_pepper", "fresh_herbs", "oil"],
+            "preparations": ["grinding"],
+            "uses_grill": true
+        },
+        {
+            "id": "braai_steak",
+            "name": "Braai Steak",
+            "country": "South Africa",
+            "tier": "quick",
+            "ingredients": ["beef", "salt_pepper", "oil", "garlic"],
+            "preparations": ["marinating"],
+            "uses_grill": true
+        },
+        {
+            "id": "ayam_panggang",
+            "name": "Ayam Panggang",
+            "country": "Indonesia",
+            "tier": "quick",
+            "ingredients": ["chicken", "oil", "coconut_milk", "island_spice_blend"],
+            "preparations": ["mixing"],
+            "uses_grill": true
+        },
+        {
+            "id": "rougay_pwason",
+            "name": "Rougay Pwason",
+            "country": "Mauritius",
+            "tier": "quick",
+            "ingredients": ["fish", "tomato", "onion", "chili"],
+            "preparations": ["chopping"],
+            "uses_grill": false
+        },
+        {
+            "id": "akoho_sy_voanio",
+            "name": "Akoho sy Voanio",
+            "country": "Madagascar",
+            "tier": "quick",
+            "ingredients": ["chicken", "coconut_milk", "garlic", "onion"],
+            "preparations": ["simmering"],
+            "uses_grill": false
+        },
+        {
+            "id": "jerk_chicken",
+            "name": "Jerk Chicken",
+            "country": "Jamaica",
+            "tier": "feast",
+            "ingredients": ["chicken", "island_spice_blend", "fresh_herbs", "oil", "lime", "chili"],
+            "preparations": ["grinding", "mixing"],
+            "uses_grill": true
+        },
+        {
+            "id": "creole_fish_curry",
+            "name": "Creole Fish Curry",
+            "country": "Mauritius/Seychelles",
+            "tier": "feast",
+            "ingredients": ["fish", "tomato", "garlic", "coconut_milk", "island_spice_blend", "onion"],
+            "preparations": ["chopping", "simmering"],
+            "uses_grill": false
+        },
+        {
+            "id": "doro_wat",
+            "name": "Doro Wat",
+            "country": "Ethiopia",
+            "tier": "feast",
+            "ingredients": ["chicken", "onion", "island_spice_blend", "eggs", "oil", "garlic"],
+            "preparations": ["frying", "simmering"],
+            "uses_grill": false
+        },
+        {
+            "id": "sate_padang",
+            "name": "Sate Padang",
+            "country": "Indonesia",
+            "tier": "feast",
+            "ingredients": ["beef", "coconut_milk", "island_spice_blend", "garlic", "chili", "salt_pepper"],
+            "preparations": ["grinding", "mixing"],
+            "uses_grill": true
+        },
+        {
+            "id": "yassa_poulet",
+            "name": "Yassa Poulet",
+            "country": "Senegal",
+            "tier": "feast",
+            "ingredients": ["chicken", "onion", "lime", "oil", "chili", "salt_pepper"],
+            "preparations": ["marinating", "frying"],
+            "uses_grill": true
+        },
+        {
+            "id": "cari_cabri",
+            "name": "Cari Cabri",
+            "country": "Mauritius",
+            "tier": "feast",
+            "ingredients": ["goat", "island_spice_blend", "tomato", "garlic", "fresh_herbs", "oil"],
+            "preparations": ["frying", "simmering"],
+            "uses_grill": false
+        }
+    ]
+}
