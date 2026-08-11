@@ -122,6 +122,8 @@ static func _setup_buttons(t: Theme) -> void:
 	_card_face_variation(t, "CardFacePreparation", COLOR_PREPARATION)
 	_card_face_variation(t, "CardFaceBack", COLOR_CARD_BACK)
 
+	_button_variation(t, "RecipeCardFront", COLOR_PANEL.lightened(0.03), COLOR_TEXT, COLOR_ACCENT_DIM, 15)
+
 	t.set_type_variation("InvisibleFillButton", "Button")
 	var transparent := StyleBoxEmpty.new()
 	t.set_stylebox("normal", "InvisibleFillButton", transparent)

@@ -7,7 +7,23 @@
             "tier": "quick",
             "ingredients": ["fish", "oil", "salt_pepper", "island_spice_blend"],
             "preparations": ["marinating"],
-            "uses_grill": true
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Whole fish (snapper or mackerel)", "quantity": "1, about 500g" },
+                    { "name": "Cooking oil", "quantity": "2 tbsp" },
+                    { "name": "Salt & pepper", "quantity": "to taste" },
+                    { "name": "Spice paste (turmeric, chili, garlic, ginger)", "quantity": "2 tbsp" }
+                ],
+                "prep_time_minutes": 30,
+                "cook_time_minutes": 20,
+                "steps": [
+                    "Clean the fish and score the skin a few times.",
+                    "Rub the fish all over with spice paste, salt and pepper.",
+                    "Let it marinate for 30 minutes.",
+                    "Grill over medium-high heat, basting with oil, until charred and cooked through."
+                ]
+            }
         },
         {
             "id": "nyama_choma",
@@ -16,7 +32,23 @@
             "tier": "quick",
             "ingredients": ["goat", "salt_pepper", "fresh_herbs", "oil"],
             "preparations": ["grinding"],
-            "uses_grill": true
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Goat meat, bone-in chunks", "quantity": "1 kg" },
+                    { "name": "Salt & pepper", "quantity": "to taste" },
+                    { "name": "Fresh coriander, chopped", "quantity": "a handful, for garnish" },
+                    { "name": "Cooking oil", "quantity": "2 tbsp" }
+                ],
+                "prep_time_minutes": 15,
+                "cook_time_minutes": 45,
+                "steps": [
+                    "Season the goat meat generously with salt and pepper.",
+                    "Rub the meat with a little oil.",
+                    "Grill slowly over charcoal, turning occasionally, until tender.",
+                    "Garnish with chopped fresh coriander before serving."
+                ]
+            }
         },
         {
             "id": "braai_steak",
@@ -25,7 +57,23 @@
             "tier": "quick",
             "ingredients": ["beef", "salt_pepper", "oil", "garlic"],
             "preparations": ["marinating"],
-            "uses_grill": true
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Beef steaks", "quantity": "2, about 200g each" },
+                    { "name": "Salt & pepper", "quantity": "to taste" },
+                    { "name": "Cooking oil", "quantity": "2 tbsp" },
+                    { "name": "Garlic, minced", "quantity": "2 cloves" }
+                ],
+                "prep_time_minutes": 60,
+                "cook_time_minutes": 10,
+                "steps": [
+                    "Rub the steaks with garlic, salt and pepper.",
+                    "Drizzle with oil and marinate for at least an hour.",
+                    "Grill over high heat for a few minutes per side.",
+                    "Rest the steaks briefly before serving."
+                ]
+            }
         },
         {
             "id": "ayam_panggang",
@@ -34,7 +82,23 @@
             "tier": "quick",
             "ingredients": ["chicken", "oil", "coconut_milk", "island_spice_blend"],
             "preparations": ["mixing"],
-            "uses_grill": true
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Chicken, cut into pieces", "quantity": "1 kg" },
+                    { "name": "Cooking oil", "quantity": "2 tbsp" },
+                    { "name": "Coconut milk", "quantity": "200 ml" },
+                    { "name": "Spice blend (galangal, turmeric, coriander)", "quantity": "3 tbsp" }
+                ],
+                "prep_time_minutes": 20,
+                "cook_time_minutes": 25,
+                "steps": [
+                    "Mix the spice blend with coconut milk and oil to form a marinade.",
+                    "Coat the chicken pieces evenly in the marinade.",
+                    "Let it sit for 20 minutes.",
+                    "Grill over medium heat, basting occasionally, until golden and cooked through."
+                ]
+            }
         },
         {
             "id": "rougay_pwason",
@@ -43,7 +107,23 @@
             "tier": "quick",
             "ingredients": ["fish", "tomato", "onion", "chili"],
             "preparations": ["chopping"],
-            "uses_grill": false
+            "uses_grill": false,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Fish steaks or fillets", "quantity": "500g" },
+                    { "name": "Tomatoes, chopped", "quantity": "3" },
+                    { "name": "Onion, chopped", "quantity": "1" },
+                    { "name": "Chili, sliced", "quantity": "2" }
+                ],
+                "prep_time_minutes": 15,
+                "cook_time_minutes": 25,
+                "steps": [
+                    "Chop the tomatoes, onion, and chili.",
+                    "Sear the fish lightly in a hot pan.",
+                    "Add the tomatoes, onion, and chili, and simmer together.",
+                    "Cook until the sauce thickens and the fish is cooked through."
+                ]
+            }
         },
         {
             "id": "akoho_sy_voanio",
@@ -52,7 +132,23 @@
             "tier": "quick",
             "ingredients": ["chicken", "coconut_milk", "garlic", "onion"],
             "preparations": ["simmering"],
-            "uses_grill": false
+            "uses_grill": false,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Chicken, cut into pieces", "quantity": "1 kg" },
+                    { "name": "Coconut milk", "quantity": "400 ml" },
+                    { "name": "Garlic, minced", "quantity": "3 cloves" },
+                    { "name": "Onion, sliced", "quantity": "1" }
+                ],
+                "prep_time_minutes": 15,
+                "cook_time_minutes": 40,
+                "steps": [
+                    "Saute the onion and garlic until fragrant.",
+                    "Add the chicken pieces and brown lightly.",
+                    "Pour in the coconut milk and bring to a simmer.",
+                    "Simmer gently until the chicken is tender and the sauce thickens."
+                ]
+            }
         },
         {
             "id": "jerk_chicken",
@@ -61,7 +157,25 @@
             "tier": "feast",
             "ingredients": ["chicken", "island_spice_blend", "fresh_herbs", "oil", "lime", "chili"],
             "preparations": ["grinding", "mixing"],
-            "uses_grill": true
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Chicken pieces", "quantity": "1.5 kg" },
+                    { "name": "Jerk spice blend (allspice, thyme, garlic)", "quantity": "3 tbsp" },
+                    { "name": "Fresh thyme", "quantity": "a few sprigs" },
+                    { "name": "Cooking oil", "quantity": "2 tbsp" },
+                    { "name": "Lime, juiced", "quantity": "2" },
+                    { "name": "Scotch bonnet chili", "quantity": "2" }
+                ],
+                "prep_time_minutes": 60,
+                "cook_time_minutes": 35,
+                "steps": [
+                    "Grind the spice blend, chili, and fresh thyme into a jerk paste.",
+                    "Mix the paste with lime juice and oil.",
+                    "Coat the chicken thoroughly and marinate for at least an hour (overnight is best).",
+                    "Grill over medium heat, turning often, until deeply charred and cooked through."
+                ]
+            }
         },
         {
             "id": "creole_fish_curry",
@@ -70,7 +184,25 @@
             "tier": "feast",
             "ingredients": ["fish", "tomato", "garlic", "coconut_milk", "island_spice_blend", "onion"],
             "preparations": ["chopping", "simmering"],
-            "uses_grill": false
+            "uses_grill": false,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Fish, cut into chunks", "quantity": "600g" },
+                    { "name": "Tomatoes, chopped", "quantity": "3" },
+                    { "name": "Garlic, minced", "quantity": "4 cloves" },
+                    { "name": "Coconut milk", "quantity": "300 ml" },
+                    { "name": "Curry spice blend", "quantity": "2 tbsp" },
+                    { "name": "Onion, chopped", "quantity": "1" }
+                ],
+                "prep_time_minutes": 20,
+                "cook_time_minutes": 30,
+                "steps": [
+                    "Chop the tomatoes and onion, and mince the garlic.",
+                    "Saute the onion and garlic until softened.",
+                    "Stir in the spice blend, tomatoes, and coconut milk.",
+                    "Add the fish and simmer gently until cooked through."
+                ]
+            }
         },
         {
             "id": "doro_wat",
@@ -79,7 +211,25 @@
             "tier": "feast",
             "ingredients": ["chicken", "onion", "island_spice_blend", "eggs", "oil", "garlic"],
             "preparations": ["frying", "simmering"],
-            "uses_grill": false
+            "uses_grill": false,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Chicken pieces", "quantity": "1 kg" },
+                    { "name": "Onions, finely chopped", "quantity": "4" },
+                    { "name": "Berbere spice blend", "quantity": "3 tbsp" },
+                    { "name": "Hard-boiled eggs", "quantity": "4" },
+                    { "name": "Cooking oil or butter", "quantity": "3 tbsp" },
+                    { "name": "Garlic, minced", "quantity": "4 cloves" }
+                ],
+                "prep_time_minutes": 30,
+                "cook_time_minutes": 60,
+                "steps": [
+                    "Fry the onions slowly until deeply caramelized.",
+                    "Stir in the garlic and spice blend, and cook until fragrant.",
+                    "Add the chicken and enough water to simmer.",
+                    "Simmer until the chicken is tender, then add the hard-boiled eggs."
+                ]
+            }
         },
         {
             "id": "sate_padang",
@@ -88,7 +238,25 @@
             "tier": "feast",
             "ingredients": ["beef", "coconut_milk", "island_spice_blend", "garlic", "chili", "salt_pepper"],
             "preparations": ["grinding", "mixing"],
-            "uses_grill": true
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Beef, cubed", "quantity": "600g" },
+                    { "name": "Coconut milk", "quantity": "300 ml" },
+                    { "name": "Spice paste (turmeric, galangal, coriander)", "quantity": "3 tbsp" },
+                    { "name": "Garlic, minced", "quantity": "4 cloves" },
+                    { "name": "Chili", "quantity": "2" },
+                    { "name": "Salt & pepper", "quantity": "to taste" }
+                ],
+                "prep_time_minutes": 40,
+                "cook_time_minutes": 20,
+                "steps": [
+                    "Grind the spice paste with garlic and chili.",
+                    "Simmer the beef in the spice paste and coconut milk until tender.",
+                    "Thread the beef onto skewers.",
+                    "Grill briefly, basting with the reduced sauce."
+                ]
+            }
         },
         {
             "id": "yassa_poulet",
@@ -97,7 +265,25 @@
             "tier": "feast",
             "ingredients": ["chicken", "onion", "lime", "oil", "chili", "salt_pepper"],
             "preparations": ["marinating", "frying"],
-            "uses_grill": true
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Chicken pieces", "quantity": "1 kg" },
+                    { "name": "Onions, thinly sliced", "quantity": "4" },
+                    { "name": "Lime, juiced", "quantity": "3" },
+                    { "name": "Cooking oil", "quantity": "3 tbsp" },
+                    { "name": "Chili", "quantity": "2" },
+                    { "name": "Salt & pepper", "quantity": "to taste" }
+                ],
+                "prep_time_minutes": 120,
+                "cook_time_minutes": 30,
+                "steps": [
+                    "Marinate the chicken in lime juice, sliced onions, oil, and chili for at least 2 hours.",
+                    "Grill or fry the chicken until browned.",
+                    "Fry the marinated onions until soft and golden.",
+                    "Simmer the chicken with the onions until tender."
+                ]
+            }
         },
         {
             "id": "cari_cabri",
@@ -106,7 +292,25 @@
             "tier": "feast",
             "ingredients": ["goat", "island_spice_blend", "tomato", "garlic", "fresh_herbs", "oil"],
             "preparations": ["frying", "simmering"],
-            "uses_grill": false
+            "uses_grill": false,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Goat meat, bone-in chunks", "quantity": "800g" },
+                    { "name": "Curry spice blend", "quantity": "3 tbsp" },
+                    { "name": "Tomatoes, chopped", "quantity": "3" },
+                    { "name": "Garlic, minced", "quantity": "5 cloves" },
+                    { "name": "Fresh thyme or curry leaves", "quantity": "a few sprigs" },
+                    { "name": "Cooking oil", "quantity": "3 tbsp" }
+                ],
+                "prep_time_minutes": 20,
+                "cook_time_minutes": 90,
+                "steps": [
+                    "Fry the spice blend and garlic until fragrant.",
+                    "Add the goat meat and brown on all sides.",
+                    "Stir in the tomatoes and enough water to cover.",
+                    "Simmer slowly until the goat meat is tender."
+                ]
+            }
         }
     ]
 }

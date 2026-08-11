@@ -13,8 +13,20 @@ var ingredient_ids: Array[String] = []
 var preparation_ids: Array[String] = []
 var uses_grill: bool = false
 
+## Real-world recipe info, shown as a reveal once the dish is completed
+## in-game. Purely flavor -- never read by RulesEngine. Array[{name:
+## String, quantity: String}]; a recipe with none of this data set just
+## renders an empty ingredients list and 0 for both times.
+var real_ingredients: Array = []
+var prep_time_minutes: int = 0
+var cook_time_minutes: int = 0
+var prep_steps: Array[String] = []
+
 func total_required_slots() -> int:
 	return ingredient_ids.size() + preparation_ids.size()
+
+func total_time_minutes() -> int:
+	return prep_time_minutes + cook_time_minutes
 
 func requires_ingredient(def_id: String) -> bool:
 	return ingredient_ids.has(def_id)

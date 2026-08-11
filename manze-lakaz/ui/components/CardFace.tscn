@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://b16m1v1x4k7yq"]
+[gd_scene load_steps=3 format=3 uid="uid://b16m1v1x4k7yq"]
 
 [ext_resource type="Script" path="res://ui/components/CardFace.gd" id="1_cardface"]
+[ext_resource type="Script" path="res://ui/components/CardArtPlaceholder.gd" id="2_artplaceholder"]
 
 [node name="CardFace" type="Button"]
 custom_minimum_size = Vector2(110, 150)
@@ -28,13 +29,12 @@ layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="ArtSlot" type="TextureRect" parent="Margin/Content"]
+[node name="ArtSlot" type="Control" parent="Margin/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2
-expand_mode = 1
-stretch_mode = 5
+script = ExtResource("2_artplaceholder")
 
 [node name="NameLabel" type="Label" parent="Margin/Content"]
 unique_name_in_owner = true

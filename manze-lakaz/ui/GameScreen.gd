@@ -12,7 +12,7 @@ extends Control
 
 const DATA_DIR := "res://data"
 
-enum UiMode { SETUP, NETWORK_SETUP, LOBBY, PASS_DEVICE, DRAFT, PLAY, AI_THINKING, GAME_OVER }
+enum UiMode { SETUP, NETWORK_SETUP, LOBBY, PASS_DEVICE, DRAFT, PLAY, AI_THINKING, RECIPE_REVEAL, GAME_OVER }
 
 var db: CardDatabase
 var session: GameSession
@@ -24,6 +24,8 @@ var debug_visible: bool = false
 var log_collapsed: bool = true
 var _dealt_seen: Dictionary = {} # player_index -> true, once their first hand reveal has played
 var _player_panel_nodes: Dictionary = {} # player_index -> PlayerPanel, for the current render
+var _shown_recipe_completions: Dictionary = {} # "player_index:recipe_index" -> true
+var _pending_recipe_reveal: Dictionary = {} # {player_index, recipe_index}, while ui_mode == RECIPE_REVEAL
 
 # Hot-seat setup (player count + per-seat Human/AI + AI think time).
 var think_time_seconds: float = 1.0
@@ -63,6 +65,7 @@ var lobby_overlay: PanelContainer
 var pass_overlay: PanelContainer
 var draft_overlay: PanelContainer
 var ai_thinking_overlay: PanelContainer
+var recipe_reveal_overlay: PanelContainer
 var gameover_overlay: PanelContainer
 
 var debug_toggle_button: Button
@@ -212,6 +215,7 @@ func _build_overlays() -> void:
 	pass_overlay = _make_overlay_panel()
 	draft_overlay = _make_overlay_panel()
 	ai_thinking_overlay = _make_overlay_panel()
+	recipe_reveal_overlay = _make_overlay_panel()
 	gameover_overlay = _make_overlay_panel()
 
 func _make_overlay_panel() -> PanelContainer:
@@ -486,6 +490,7 @@ func _on_start_pressed() -> void:
 	_clear_children(log_box)
 	selected_card_id = -1
 	_dealt_seen.clear()
+	_shown_recipe_completions.clear()
 	_advance_ui_after_state_change()
 
 # ===========================================================================
@@ -710,6 +715,14 @@ func _advance_ui_after_state_change() -> void:
 	if state == null:
 		return
 
+	# Checked before game_over too: the winning attach IS a recipe
+	# completion, and the reveal should show before the victory screen,
+	# not instead of it -- "Continue" re-enters this function once the
+	# completion is marked seen, and normal dispatch (including game_over)
+	# proceeds from there.
+	if _check_for_recipe_completions():
+		return
+
 	if state.game_over:
 		_show_game_over()
 		return
@@ -738,6 +751,105 @@ func _advance_ui_after_state_change() -> void:
 		_show_draft()
 	else:
 		_show_play()
+
+## Scans for any completed recipe not yet revealed and, if found, shows it
+## and returns true so the caller stops dispatching for this call --
+## "Continue" re-enters _advance_ui_after_state_change() once it's marked
+## seen. Completion is inherently public once it happens (a finished dish
+## sits face-up on the table), so this runs the same way in hot-seat and
+## online, and even for a bot's own turn -- there's no hidden information
+## being exposed here, only which dish is done.
+func _check_for_recipe_completions() -> bool:
+	for p in state.players:
+		for ri in p.recipes.size():
+			var recipe: Recipe = p.recipes[ri]
+			if not recipe.completed:
+				continue
+			var key := "%d:%d" % [p.index, ri]
+			if _shown_recipe_completions.has(key):
+				continue
+			_shown_recipe_completions[key] = true
+			_pending_recipe_reveal = {"player_index": p.index, "recipe_index": ri}
+			_show_recipe_reveal()
+			return true
+	return false
+
+## The real-world dish behind a just-completed recipe: full ingredient
+## list with quantities, plus prep/cook/total time. Pure flavor -- shown
+## once per completed recipe, then "Continue" resumes normal dispatch.
+func _show_recipe_reveal() -> void:
+	ui_mode = UiMode.RECIPE_REVEAL
+	_clear_children(recipe_reveal_overlay)
+	var box := _overlay_content_box(recipe_reveal_overlay)
+
+	var player_index: int = _pending_recipe_reveal["player_index"]
+	var recipe_index: int = _pending_recipe_reveal["recipe_index"]
+	var recipe: Recipe = state.players[player_index].recipes[recipe_index]
+	var view := GameViewModel.real_recipe_view(recipe.def.id, db)
+
+	var headline := Label.new()
+	headline.theme_type_variation = "TitleLabel"
+	headline.text = "Player %d completed a dish!" % (player_index + 1)
+	headline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	headline.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(headline)
+
+	var card := RecipeCardFace.new()
+	card.setup(view["display_name"], view["country"], view["tier_name"], view["recipe_id"])
+	card.disabled = true
+	box.add_child(card)
+
+	var times := Label.new()
+	times.theme_type_variation = "BadgeLabel"
+	times.text = "Prep: %s    Cook: %s    Total: %s" % [view["prep_time"], view["cook_time"], view["total_time"]]
+	times.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(times)
+
+	var ingredients_title := Label.new()
+	ingredients_title.theme_type_variation = "SectionLabel"
+	ingredients_title.text = "Real ingredients"
+	box.add_child(ingredients_title)
+
+	var ingredients: Array = view["ingredients"]
+	if ingredients.is_empty():
+		var none_label := Label.new()
+		none_label.theme_type_variation = "HintLabel"
+		none_label.text = "(recipe details coming soon)"
+		box.add_child(none_label)
+	else:
+		for ing in ingredients:
+			var row := Label.new()
+			row.theme_type_variation = "RecipeSlotFilledLabel"
+			row.text = "%s -- %s" % [ing["quantity"], ing["name"]]
+			row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			box.add_child(row)
+
+	var steps: Array = view["steps"]
+	if not steps.is_empty():
+		var steps_title := Label.new()
+		steps_title.theme_type_variation = "SectionLabel"
+		steps_title.text = "How to make it"
+		box.add_child(steps_title)
+
+		for i in steps.size():
+			var step_row := Label.new()
+			step_row.theme_type_variation = "RecipeSlotEmptyLabel"
+			step_row.text = "%d. %s" % [i + 1, steps[i]]
+			step_row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			box.add_child(step_row)
+
+	var continue_btn := Button.new()
+	continue_btn.theme_type_variation = "PrimaryButton"
+	continue_btn.text = "Continue"
+	continue_btn.custom_minimum_size = Vector2(220, 0)
+	continue_btn.pressed.connect(_on_recipe_reveal_continue_pressed)
+	box.add_child(continue_btn)
+
+	_apply_overlay_visibility()
+
+func _on_recipe_reveal_continue_pressed() -> void:
+	_pending_recipe_reveal = {}
+	_advance_ui_after_state_change()
 
 ## AI turns are resolved entirely behind this overlay: no board, no hand,
 ## nothing rendered that a human shouldn't see. Only the resulting log
@@ -864,11 +976,13 @@ func _build_draft_card(offer: Dictionary, legal: Array) -> PanelContainer:
 	var box := VBoxContainer.new()
 	panel.add_child(box)
 
-	var title := Label.new()
-	title.theme_type_variation = "RecipeTitleLabel"
-	title.text = offer["title"]
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(title)
+	# Display only: the "Keep this recipe" button below is the actual
+	# action trigger, so drafting stays a single deliberate tap rather
+	# than an easy-to-fumble tap on a small card image.
+	var card := RecipeCardFace.new()
+	card.setup(offer["display_name"], offer["country"], offer["tier_name"], offer["recipe_id"])
+	card.disabled = true
+	box.add_child(card)
 
 	if not offer["ingredients"].is_empty():
 		var ing := Label.new()
@@ -1019,6 +1133,11 @@ func _build_own_recipe_panel(recipe: Recipe, ri: int, legal: Array) -> Control:
 	else:
 		outer.theme_type_variation = "RecipePanelComplete" if recipe.completed else "RecipePanel"
 		outer.add_child(box)
+
+	var art := CardArtPlaceholder.new()
+	art.category_key = "recipe"
+	art.custom_minimum_size = Vector2(0, 40)
+	box.add_child(art)
 
 	var title := Label.new()
 	title.theme_type_variation = "RecipeTitleLabel"
@@ -1219,6 +1338,17 @@ func _show_game_over() -> void:
 	headline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(headline)
 
+	# The winning dish(es), as a lasting trophy on this screen -- the
+	# recipe-reveal overlay already showed this in full (ingredients,
+	# steps) the moment it was completed, so this is a compact reminder,
+	# not a repeat of that whole reveal.
+	for recipe in _winning_recipes():
+		var view := GameViewModel.real_recipe_view(recipe.def.id, db)
+		var card := RecipeCardFace.new()
+		card.setup(view["display_name"], view["country"], view["tier_name"], view["recipe_id"])
+		card.disabled = true
+		box.add_child(card)
+
 	var new_game_button := Button.new()
 	new_game_button.theme_type_variation = "PrimaryButton"
 	new_game_button.text = "New game"
@@ -1227,6 +1357,24 @@ func _show_game_over() -> void:
 	box.add_child(new_game_button)
 
 	_apply_overlay_visibility()
+
+## The recipe(s) that won the game: the winner's own completed recipe in
+## free-for-all mode, or each teammate's completed recipe in team mode
+## (win_on_both_recipes requires every partner to have finished one).
+func _winning_recipes() -> Array[Recipe]:
+	var out: Array[Recipe] = []
+	if state.winner_player_index >= 0:
+		var rec := state.players[state.winner_player_index].completed_recipe()
+		if rec != null:
+			out.append(rec)
+	elif state.winner_team_id >= 0:
+		for p in state.players:
+			if p.team_id != state.winner_team_id:
+				continue
+			var rec := p.completed_recipe()
+			if rec != null:
+				out.append(rec)
+	return out
 
 func _on_new_game_pressed() -> void:
 	if is_network_mode:
@@ -1281,6 +1429,7 @@ func _apply_overlay_visibility() -> void:
 	pass_overlay.visible = ui_mode == UiMode.PASS_DEVICE
 	draft_overlay.visible = ui_mode == UiMode.DRAFT
 	ai_thinking_overlay.visible = ui_mode == UiMode.AI_THINKING
+	recipe_reveal_overlay.visible = ui_mode == UiMode.RECIPE_REVEAL
 	gameover_overlay.visible = ui_mode == UiMode.GAME_OVER
 	overlay_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE if ui_mode == UiMode.PLAY else Control.MOUSE_FILTER_STOP
 	main_layout.visible = ui_mode == UiMode.PLAY

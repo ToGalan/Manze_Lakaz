@@ -59,6 +59,37 @@ static func card_label(def_id: String, category: int, db: CardDatabase) -> Strin
 static func recipe_title(def: RecipeDef) -> String:
 	return "%s (%s)" % [def.display_name, def.tier_name().capitalize()]
 
+## The real-world recipe reveal shown when a dish is completed in-game:
+## every real ingredient with its quantity, plus prep/cook/total time as
+## "Xh Ym" (or "Ym" under an hour). Always looked up from the CardDatabase
+## rather than a specific Recipe instance's own .def, since this is static
+## flavor data that's identical for every copy of a dish -- including
+## reconstructed opponent recipes online, whose .def is otherwise stripped
+## down to only what's actually visible on the table.
+static func real_recipe_view(recipe_id: String, db: CardDatabase) -> Dictionary:
+	var def: RecipeDef = db.recipe_defs[recipe_id]
+	return {
+		"recipe_id": recipe_id,
+		"display_name": def.display_name,
+		"tier_name": def.tier_name(),
+		"title": recipe_title(def),
+		"country": def.country,
+		"ingredients": def.real_ingredients.duplicate(true),
+		"steps": def.prep_steps.duplicate(),
+		"prep_time": _format_minutes(def.prep_time_minutes),
+		"cook_time": _format_minutes(def.cook_time_minutes),
+		"total_time": _format_minutes(def.total_time_minutes()),
+	}
+
+static func _format_minutes(minutes: int) -> String:
+	if minutes <= 0:
+		return "--"
+	if minutes < 60:
+		return "%dm" % minutes
+	var h := minutes / 60
+	var m := minutes % 60
+	return ("%dh %dm" % [h, m]) if m > 0 else "%dh" % h
+
 ## Own-recipe view: every required slot, filled or not. Used only for the
 ## acting player's own recipes.
 ## Returns Array[{label: String, filled: bool, is_ingredient: bool}]
@@ -108,6 +139,9 @@ static func draft_offer_view(state: GameState, player_index: int) -> Array:
 		out.append({
 			"recipe_id": rid,
 			"title": recipe_title(def),
+			"display_name": def.display_name,
+			"country": def.country,
+			"tier_name": def.tier_name(),
 			"ingredients": ingredient_names,
 			"preparations": prep_names,
 			"uses_grill": def.uses_grill,

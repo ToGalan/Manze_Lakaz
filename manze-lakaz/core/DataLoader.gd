@@ -112,6 +112,7 @@ static func _load_recipe_defs(json: Dictionary, path: String, db: CardDatabase, 
 		for pid in preparations:
 			rd.preparation_ids.append(String(pid))
 		rd.uses_grill = entry.get("uses_grill", false)
+		_load_real_recipe(rd, entry.get("real_recipe", {}), path, errors)
 		if rd.ingredient_ids.is_empty() and rd.preparation_ids.is_empty():
 			errors.append("Recipe '%s' in %s has no ingredients or preparations" % [rd.id, path])
 			continue
@@ -120,6 +121,30 @@ static func _load_recipe_defs(json: Dictionary, path: String, db: CardDatabase, 
 			continue
 		db.recipe_defs[rd.id] = rd
 		db.recipe_order.append(rd.id)
+
+## real_recipe is purely flavor text (shown on completion), never read by
+## RulesEngine -- so a missing/empty block is fine, but a malformed one
+## (wrong shape) still fails validation, same as any other data error.
+static func _load_real_recipe(rd: RecipeDef, entry: Dictionary, path: String, errors: Array[String]) -> void:
+	if entry.is_empty():
+		return
+	var ingredients = entry.get("ingredients", [])
+	if typeof(ingredients) != TYPE_ARRAY:
+		errors.append("Recipe '%s' in %s has a malformed real_recipe.ingredients (expected an array)" % [rd.id, path])
+	else:
+		for ing in ingredients:
+			if typeof(ing) != TYPE_DICTIONARY or not ing.has("name") or not ing.has("quantity"):
+				errors.append("Recipe '%s' in %s has a malformed real_recipe ingredient entry: %s" % [rd.id, path, str(ing)])
+				continue
+			rd.real_ingredients.append({"name": String(ing["name"]), "quantity": String(ing["quantity"])})
+	rd.prep_time_minutes = int(entry.get("prep_time_minutes", 0))
+	rd.cook_time_minutes = int(entry.get("cook_time_minutes", 0))
+	var steps = entry.get("steps", [])
+	if typeof(steps) != TYPE_ARRAY:
+		errors.append("Recipe '%s' in %s has a malformed real_recipe.steps (expected an array)" % [rd.id, path])
+	else:
+		for step in steps:
+			rd.prep_steps.append(String(step))
 
 static func _validate_recipe_references(db: CardDatabase, errors: Array[String]) -> void:
 	for rid in db.recipe_order:
