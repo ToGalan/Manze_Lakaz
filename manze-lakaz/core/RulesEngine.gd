@@ -130,6 +130,7 @@ static func _add_play_actions(state: GameState, player: Player, actions: Array[A
 		_add_attach_actions_for_card(state, player, c, actions)
 	for c in player.hand:
 		actions.append(Action.make_discard(player.index, c.instance_id))
+	_add_move_preparation_actions(state, player, actions)
 
 static func _add_attach_actions_for_card(state: GameState, player: Player, card: Card, actions: Array[Action]) -> void:
 	for ri in player.recipes.size():
@@ -137,13 +138,48 @@ static func _add_attach_actions_for_card(state: GameState, player: Player, card:
 		if recipe.completed:
 			continue
 		if card.is_ingredient():
-			if recipe.is_ingredient_slot_open(card.def_id):
-				actions.append(Action.make_attach(player.index, card.instance_id, ri, false))
+			var def := state.database.get_ingredient_def(card.def_id)
+			if def != null and def.is_joker:
+				_add_joker_attach_actions(state, player, card, def, recipe, ri, actions)
+			elif recipe.is_ingredient_slot_open(card.def_id):
+				actions.append(Action.make_attach(player.index, card.instance_id, ri, false, card.def_id))
 			elif state.config.decoys_enabled:
 				actions.append(Action.make_attach(player.index, card.instance_id, ri, true))
 		elif card.is_preparation():
 			if recipe.is_preparation_slot_open(card.def_id):
-				actions.append(Action.make_attach(player.index, card.instance_id, ri, false))
+				actions.append(Action.make_attach(player.index, card.instance_id, ri, false, card.def_id))
+
+## A joker fills any open required ingredient slot on this recipe whose own
+## def shares the joker's ingredient_type -- e.g. a Vegetable Joker can fill
+## an open "tomato" slot, an open "onion" slot, or both (as separate legal
+## actions) if a recipe needs more than one vegetable at once.
+static func _add_joker_attach_actions(state: GameState, player: Player, card: Card, joker_def: CardDef, recipe: Recipe, ri: int, actions: Array[Action]) -> void:
+	for req_id in recipe.def.ingredient_ids:
+		if not recipe.is_ingredient_slot_open(req_id):
+			continue
+		var req_def := state.database.get_ingredient_def(req_id)
+		if req_def != null and req_def.ingredient_type == joker_def.ingredient_type:
+			actions.append(Action.make_attach(player.index, card.instance_id, ri, false, req_id))
+
+## A preparation card can be relocated between the acting player's own
+## recipes: off any of their recipes that isn't completed (a completed
+## recipe is frozen, same as it already is for STEAL), onto any other of
+## their own recipes that has an open slot for that exact preparation.
+static func _add_move_preparation_actions(state: GameState, player: Player, actions: Array[Action]) -> void:
+	for from_ri in player.recipes.size():
+		var from_recipe: Recipe = player.recipes[from_ri]
+		if from_recipe.completed:
+			continue
+		for def_id in from_recipe.filled_preparations.keys():
+			var card: Card = from_recipe.filled_preparations[def_id]
+			for to_ri in player.recipes.size():
+				if to_ri == from_ri:
+					continue
+				var to_recipe: Recipe = player.recipes[to_ri]
+				if to_recipe.completed:
+					continue
+				if to_recipe.is_preparation_slot_open(card.def_id):
+					actions.append(Action.make_move_preparation(player.index, card.instance_id, from_ri, to_ri))
 
 # ===========================================================================
 # Applying actions
@@ -175,6 +211,8 @@ static func apply_action(state: GameState, action: Action) -> void:
 			_apply_discard(state, action)
 		Action.Type.TAKE_DISCARD:
 			_apply_take_discard(state, action)
+		Action.Type.MOVE_PREPARATION:
+			_apply_move_preparation(state, action)
 
 	_advance_phase_if_needed(state)
 
@@ -238,9 +276,9 @@ static func _apply_attach(state: GameState, action: Action) -> void:
 	if action.as_decoy:
 		recipe.attach_decoy(card)
 	elif card.is_ingredient():
-		recipe.attach_ingredient_to_slot(card)
+		recipe.attach_ingredient_to_slot(card, action.target_def_id)
 	else:
-		recipe.attach_preparation_to_slot(card)
+		recipe.attach_preparation_to_slot(card, action.target_def_id)
 
 	if recipe.completed:
 		_handle_recipe_completed(state, player, recipe)
@@ -252,6 +290,18 @@ static func _apply_discard(state: GameState, action: Action) -> void:
 		push_error("RulesEngine._apply_discard: card #%d not in P%d's hand" % [action.card_instance_id, player.index])
 		return
 	state.discard_pile.append(card)
+
+static func _apply_move_preparation(state: GameState, action: Action) -> void:
+	var player := state.players[action.player_index]
+	var from_recipe: Recipe = player.recipes[action.recipe_index]
+	var to_recipe: Recipe = player.recipes[action.move_to_recipe_index]
+	var card := from_recipe.remove_preparation(action.card_instance_id)
+	if card == null:
+		push_error("RulesEngine._apply_move_preparation: card #%d not attached to P%d recipe#%d" % [action.card_instance_id, player.index, action.recipe_index])
+		return
+	to_recipe.attach_preparation_to_slot(card)
+	if to_recipe.completed:
+		_handle_recipe_completed(state, player, to_recipe)
 
 static func _handle_recipe_completed(state: GameState, player: Player, recipe: Recipe) -> void:
 	if not state.config.win_on_both_recipes:

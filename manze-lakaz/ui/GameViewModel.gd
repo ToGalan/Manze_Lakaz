@@ -34,6 +34,8 @@ static func status_text(state: GameState, legal_actions: Array[Action]) -> Strin
 		verbs.append("Attach")
 	if types_present.has(Action.Type.DISCARD):
 		verbs.append("Discard")
+	if types_present.has(Action.Type.MOVE_PREPARATION):
+		verbs.append("Move Preparation")
 
 	if verbs.is_empty():
 		return "Player %d has no legal actions" % player_num
@@ -96,19 +98,23 @@ static func _format_minutes(minutes: int) -> String:
 static func own_recipe_slots(recipe: Recipe, db: CardDatabase) -> Array:
 	var slots: Array = []
 	for iid in recipe.def.ingredient_ids:
+		var filled_card: Card = recipe.filled_ingredients.get(iid)
 		slots.append({
 			"label": card_label(iid, CardDef.Category.INGREDIENT, db),
-			"filled": recipe.filled_ingredients.has(iid),
+			"filled": filled_card != null,
 			"is_ingredient": true,
+			"card_instance_id": filled_card.instance_id if filled_card != null else -1,
 		})
 	for pid in recipe.def.preparation_ids:
+		var filled_card: Card = recipe.filled_preparations.get(pid)
 		slots.append({
 			"label": card_label(pid, CardDef.Category.PREPARATION, db),
-			"filled": recipe.filled_preparations.has(pid),
+			"filled": filled_card != null,
 			"is_ingredient": false,
+			"card_instance_id": filled_card.instance_id if filled_card != null else -1,
 		})
 	if recipe.def.uses_grill:
-		slots.append({"label": "Grill (free)", "filled": true, "is_ingredient": false})
+		slots.append({"label": "Grill (free)", "filled": true, "is_ingredient": false, "card_instance_id": -1})
 	return slots
 
 ## Other-player-recipe view: only cards actually attached, nothing about
@@ -181,6 +187,13 @@ static func describe_action_for_log(state: GameState, action: Action) -> String:
 			var card := player.find_in_hand(action.card_instance_id)
 			var card_name := card_label(card.def_id, card.category, db) if card != null else "a card"
 			return "%s discarded %s" % [actor, card_name]
+		Action.Type.MOVE_PREPARATION:
+			var player: Player = state.players[action.player_index]
+			var from_recipe: Recipe = player.recipes[action.recipe_index]
+			var card := from_recipe.find_attached_card(action.card_instance_id)
+			var card_name := card_label(card.def_id, card.category, db) if card != null else "a preparation"
+			var to_recipe: Recipe = player.recipes[action.move_to_recipe_index]
+			return "%s moved %s to %s" % [actor, card_name, to_recipe.def.display_name]
 	return "%s took an action" % actor
 
 ## Full reveal of hidden information, for the debug panel only: every

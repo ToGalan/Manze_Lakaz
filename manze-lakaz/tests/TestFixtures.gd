@@ -23,6 +23,27 @@ static func tiny_database() -> CardDatabase:
 	_add_recipe(db, "dish_f", "Test Dish F", "feast", ["fish", "oil", "salt"], ["chopping", "grinding"])
 	return db
 
+## Ingredient types: oil/salt = pantry, fish/beef = protein, onion/tomato =
+## vegetable (two of the same type so dish_veg2 needs both at once, the
+## ambiguous case a joker can match more than one open slot for). One joker
+## per type, 2 copies each, mirroring the real deck's joker_protein/
+## joker_vegetable/joker_pantry.
+static func joker_database() -> CardDatabase:
+	var db := CardDatabase.new()
+	_add_ingredient(db, "oil", "Oil", 4, CardDef.TYPE_PANTRY)
+	_add_ingredient(db, "salt", "Salt", 3, CardDef.TYPE_PANTRY)
+	_add_ingredient(db, "fish", "Fish", 3, CardDef.TYPE_PROTEIN)
+	_add_ingredient(db, "beef", "Beef", 3, CardDef.TYPE_PROTEIN)
+	_add_ingredient(db, "onion", "Onion", 3, CardDef.TYPE_VEGETABLE)
+	_add_ingredient(db, "tomato", "Tomato", 3, CardDef.TYPE_VEGETABLE)
+	_add_joker(db, "joker_protein", "Protein Joker", 2, CardDef.TYPE_PROTEIN)
+	_add_joker(db, "joker_vegetable", "Vegetable Joker", 2, CardDef.TYPE_VEGETABLE)
+	_add_joker(db, "joker_pantry", "Pantry Joker", 2, CardDef.TYPE_PANTRY)
+	_add_preparation(db, "grinding", "Grinding", 3)
+	_add_recipe(db, "dish_protein", "Test Dish Protein", "quick", ["fish", "oil"], ["grinding"])
+	_add_recipe(db, "dish_veg2", "Test Dish Two Veg", "quick", ["onion", "tomato"], ["grinding"])
+	return db
+
 static func default_config() -> GameConfig:
 	var c := GameConfig.new()
 	c.num_players = 2
@@ -64,8 +85,12 @@ static func make_card_allocator() -> Callable:
 		next_id["v"] = id + 1
 		return Card.new(id, def_id, category)
 
-static func _add_ingredient(db: CardDatabase, id: String, name: String, copies: int) -> void:
-	db.ingredient_defs[id] = CardDef.new(id, name, CardDef.Category.INGREDIENT, copies)
+static func _add_ingredient(db: CardDatabase, id: String, name: String, copies: int, ingredient_type: String = "") -> void:
+	db.ingredient_defs[id] = CardDef.new(id, name, CardDef.Category.INGREDIENT, copies, ingredient_type, false)
+	db.ingredient_order.append(id)
+
+static func _add_joker(db: CardDatabase, id: String, name: String, copies: int, ingredient_type: String) -> void:
+	db.ingredient_defs[id] = CardDef.new(id, name, CardDef.Category.INGREDIENT, copies, ingredient_type, true)
 	db.ingredient_order.append(id)
 
 static func _add_preparation(db: CardDatabase, id: String, name: String, copies: int) -> void:

@@ -24,7 +24,7 @@ func test_ffa_win_on_first_completed_recipe() -> void:
 
 	TestUtil.assert_false(state.game_over, "game should not be over before the last required card is attached")
 
-	RulesEngine.apply_action(state, Action.make_attach(0, grinding_card.instance_id, 0, false))
+	RulesEngine.apply_action(state, Action.make_attach(0, grinding_card.instance_id, 0, false, "grinding"))
 
 	TestUtil.assert_true(state.game_over, "completing a recipe in FFA mode should end the game immediately")
 	TestUtil.assert_eq(state.winner_player_index, 0, "the player who completed the recipe should be recorded as the winner")
@@ -48,7 +48,7 @@ func test_team_mode_requires_both_partners_to_complete() -> void:
 	p0.hand = [grinding_card]
 	state.current_player_index = 0
 	state.phase = GameState.Phase.PLAY
-	RulesEngine.apply_action(state, Action.make_attach(0, grinding_card.instance_id, 0, false))
+	RulesEngine.apply_action(state, Action.make_attach(0, grinding_card.instance_id, 0, false, "grinding"))
 
 	TestUtil.assert_true(recipe0.completed, "player 0's recipe should be complete")
 	TestUtil.assert_false(state.game_over, "team should not win until BOTH partners have completed a recipe")
@@ -62,7 +62,7 @@ func test_team_mode_requires_both_partners_to_complete() -> void:
 	p2.hand = [grinding_card2]
 	state.current_player_index = 2
 	state.phase = GameState.Phase.PLAY
-	RulesEngine.apply_action(state, Action.make_attach(2, grinding_card2.instance_id, 0, false))
+	RulesEngine.apply_action(state, Action.make_attach(2, grinding_card2.instance_id, 0, false, "grinding"))
 
 	TestUtil.assert_true(state.game_over, "the team should win once both partners have completed a recipe")
 	TestUtil.assert_eq(state.winner_team_id, 0, "team 0 (seats 0 and 2) should be recorded as the winner")

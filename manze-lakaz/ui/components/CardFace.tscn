@@ -44,3 +44,16 @@ theme_type_variation = &"MiniChipLabel"
 horizontal_alignment = 1
 autowrap_mode = 3
 text = "Card"
+
+[node name="ArtImage" type="TextureRect" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5

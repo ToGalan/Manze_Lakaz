@@ -14,6 +14,8 @@ static func serialize(a: Action) -> Dictionary:
 		"card_instance_id": a.card_instance_id,
 		"recipe_index": a.recipe_index,
 		"as_decoy": a.as_decoy,
+		"target_def_id": a.target_def_id,
+		"move_to_recipe_index": a.move_to_recipe_index,
 	}
 
 static func deserialize(d: Dictionary) -> Action:
@@ -26,6 +28,8 @@ static func deserialize(d: Dictionary) -> Action:
 	a.card_instance_id = d.get("card_instance_id", -1)
 	a.recipe_index = d.get("recipe_index", -1)
 	a.as_decoy = d.get("as_decoy", false)
+	a.target_def_id = d.get("target_def_id", "")
+	a.move_to_recipe_index = d.get("move_to_recipe_index", -1)
 	return a
 
 static func serialize_list(actions: Array) -> Array:

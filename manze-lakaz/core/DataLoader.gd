@@ -71,7 +71,12 @@ static func _load_card_defs(json: Dictionary, path: String, category: int, defs_
 		if copies <= 0:
 			errors.append("Card '%s' in %s has non-positive copy count %d" % [id, path, copies])
 			continue
-		var def := CardDef.new(id, entry["name"], category, copies)
+		var ingredient_type := String(entry.get("type", ""))
+		if category == CardDef.Category.INGREDIENT and not CardDef.ALL_INGREDIENT_TYPES.has(ingredient_type):
+			errors.append("Ingredient '%s' in %s has missing/unknown 'type' '%s' (expected one of %s)" % [id, path, ingredient_type, CardDef.ALL_INGREDIENT_TYPES])
+			continue
+		var is_joker := bool(entry.get("joker", false))
+		var def := CardDef.new(id, entry["name"], category, copies, ingredient_type, is_joker)
 		defs_out[id] = def
 		order_out.append(id)
 		sum += copies
@@ -166,7 +171,10 @@ static func _validate_every_type_used(db: CardDatabase, errors: Array[String]) -
 		for pid in rd.preparation_ids:
 			used_preps[pid] = true
 	for iid in db.ingredient_order:
-		if not used_ingredients.has(iid):
+		# Joker ingredients deliberately never appear in a recipe's literal
+		# ingredient_ids -- they stand in for a whole category (see
+		# CardDef.is_joker), so "unused" is expected and correct for them.
+		if not db.ingredient_defs[iid].is_joker and not used_ingredients.has(iid):
 			errors.append("Ingredient '%s' does not appear in any recipe" % iid)
 	for pid in db.preparation_order:
 		if not used_preps.has(pid):

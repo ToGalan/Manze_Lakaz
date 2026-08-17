@@ -10,7 +10,7 @@ const CARD_SCENE := preload("res://ui/components/CardFace.tscn")
 const GHOST_SIZE := Vector2(92, 124)
 
 ## style: "deal", "draw", "attach", "discard", or "steal".
-static func fly(layer: Control, from_global: Vector2, to_global: Vector2, display_name: String, category_key: String, style: String) -> void:
+static func fly(layer: Control, from_global: Vector2, to_global: Vector2, display_name: String, category_key: String, style: String, def_id: String = "") -> void:
 	var ghost: CardFace = CARD_SCENE.instantiate()
 	layer.add_child(ghost)
 	ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -21,7 +21,7 @@ static func fly(layer: Control, from_global: Vector2, to_global: Vector2, displa
 	if category_key == "back":
 		ghost.set_face_down()
 	else:
-		ghost.setup(display_name, category_key)
+		ghost.setup(display_name, category_key, -1, def_id)
 
 	ghost.global_position = from_global - GHOST_SIZE * 0.5
 

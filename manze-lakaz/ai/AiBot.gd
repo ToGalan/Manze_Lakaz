@@ -92,15 +92,36 @@ func _choose_least_useful_discard(view: PublicGameView, discard_actions: Array[A
 	return best
 
 func _usefulness_score(view: PublicGameView, card: Card) -> int:
+	var joker_type := _joker_ingredient_type(view, card)
 	var score := 0
 	for recipe in view.own_recipes:
 		if recipe.completed:
 			continue
-		if card.is_ingredient() and recipe.is_ingredient_slot_open(card.def_id):
+		if joker_type != "":
+			if _recipe_has_open_slot_of_type(view, recipe, joker_type):
+				score += 1
+		elif card.is_ingredient() and recipe.is_ingredient_slot_open(card.def_id):
 			score += 1
 		elif card.is_preparation() and recipe.is_preparation_slot_open(card.def_id):
 			score += 1
 	return score
+
+## Non-empty only for a joker ingredient card -- its ingredient_type, the
+## category of open slot it can fill in place of one specific ingredient.
+func _joker_ingredient_type(view: PublicGameView, card: Card) -> String:
+	if not card.is_ingredient():
+		return ""
+	var def := view.database.get_ingredient_def(card.def_id)
+	return def.ingredient_type if def != null and def.is_joker else ""
+
+func _recipe_has_open_slot_of_type(view: PublicGameView, recipe: Recipe, ingredient_type: String) -> bool:
+	for req_id in recipe.def.ingredient_ids:
+		if not recipe.is_ingredient_slot_open(req_id):
+			continue
+		var req_def := view.database.get_ingredient_def(req_id)
+		if req_def != null and req_def.ingredient_type == ingredient_type:
+			return true
+	return false
 
 func _find_in_hand(view: PublicGameView, card_instance_id: int) -> Card:
 	for c in view.own_hand:
@@ -109,6 +130,12 @@ func _find_in_hand(view: PublicGameView, card_instance_id: int) -> Card:
 	return null
 
 func _own_open_ingredient_slot(view: PublicGameView, def_id: String) -> bool:
+	var def := view.database.get_ingredient_def(def_id)
+	if def != null and def.is_joker:
+		for recipe in view.own_recipes:
+			if not recipe.completed and _recipe_has_open_slot_of_type(view, recipe, def.ingredient_type):
+				return true
+		return false
 	for recipe in view.own_recipes:
 		if recipe.completed:
 			continue

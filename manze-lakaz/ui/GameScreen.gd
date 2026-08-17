@@ -11,19 +11,39 @@ extends Control
 ## a Tween to decide what happens next.
 
 const DATA_DIR := "res://data"
+const TUBE_INSPECTOR_SCENE := preload("res://addons/tube/tube_inspector.tscn")
 
-enum UiMode { SETUP, NETWORK_SETUP, LOBBY, PASS_DEVICE, DRAFT, PLAY, AI_THINKING, RECIPE_REVEAL, GAME_OVER }
+enum UiMode { SETUP, NETWORK_SETUP, LOBBY, PASS_DEVICE, DRAFT, PLAY, AI_THINKING, RECIPE_REVEAL, GAME_OVER, RECONNECTING }
+
+# Reconnection budget: total time a disconnected client keeps retrying
+# before giving up and returning to the menu, vs. how long a single
+# join_session() + request_rejoin() attempt is allowed to hang before it's
+# abandoned in favor of a fresh one. The per-attempt figure is set above
+# the addon's own worst-case single-peer signaling budget (see
+# manze_lakaz_tube_context.tres' peer_signaling_timeout *
+# peer_signaling_max_attempts = 4.0 * 5 = 20s) so a legitimately slow-but-
+# succeeding negotiation isn't cut off by our own retry logic before Tube
+# itself would have given up.
+const RECONNECT_TOTAL_TIMEOUT_SECONDS := 60.0
+const RECONNECT_ATTEMPT_TIMEOUT_SECONDS := 25.0
+const RECONNECT_BACKOFF_START_SECONDS := 1.0
+const RECONNECT_BACKOFF_MAX_SECONDS := 8.0
 
 var db: CardDatabase
 var session: GameSession
 var state: GameState # a cached read of session.get_state(), refreshed every _advance_ui_after_state_change()
 var is_network_mode: bool = false
+var is_network_host: bool = false # true only while THIS device is the one hosting the current session
+var _reconnecting: bool = false # guards against re-entering the retry loop, and tells _on_join_rejected to defer to it
 var ui_mode: int = UiMode.SETUP
 var selected_card_id: int = -1
+var selected_move_prep_id: int = -1 # instance id of an attached preparation card picked up for MOVE_PREPARATION; mutually exclusive with selected_card_id
+var _pending_joker_choices: Array[Action] = [] # ambiguous ATTACH choices (a joker matching >1 open slot on the just-clicked recipe) awaiting the player's pick
 var debug_visible: bool = false
 var log_collapsed: bool = true
 var _dealt_seen: Dictionary = {} # player_index -> true, once their first hand reveal has played
 var _player_panel_nodes: Dictionary = {} # player_index -> PlayerPanel, for the current render
+var _own_recipe_panel_nodes: Dictionary = {} # recipe_index -> Control, for the current render
 var _shown_recipe_completions: Dictionary = {} # "player_index:recipe_index" -> true
 var _pending_recipe_reveal: Dictionary = {} # {player_index, recipe_index}, while ui_mode == RECIPE_REVEAL
 
@@ -35,14 +55,17 @@ var _pending_seat_mode: Dictionary = {} # player_index -> -1 (Human) or AiBot.Di
 # Online setup + lobby.
 var _pending_is_host: bool = true
 var _pending_display_name: String = "Player"
-var _pending_host_port: int = 8910
-var _pending_join_address: String = "127.0.0.1"
-var _pending_join_port: int = 8910
+var _pending_join_session_id: String = ""
 var _pending_turn_timer_seconds: float = 30.0
 var _pending_auto_play_difficulty: int = AiBot.Difficulty.EASY
 var _pending_fill_ai: bool = true
 var _pending_ai_fill_difficulty: int = AiBot.Difficulty.MEDIUM
 var lobby_seats: Array = []
+var my_session_id: String = "" # this device's current session id, host or client; only shown in the lobby (as a shareable code) when is_network_host -- see _show_lobby()
+var network_status_label: Label # rebuilt each time _show_network_setup() runs; updated from async connection signals
+var _setup_info_message: String = "" # one-shot banner shown on the next _show_setup(), e.g. "the host ended the session"
+var _leaving_intentionally: bool = false # set right before OUR OWN shutdown() calls, so the global session_ended handler doesn't also treat it as "the host ended it out from under us"
+var leave_game_button: Button # persistent, visible only mid-game in network mode; the only way to leave once play has started
 
 # Static structure, built once in _ready().
 var main_layout: VBoxContainer
@@ -67,10 +90,13 @@ var draft_overlay: PanelContainer
 var ai_thinking_overlay: PanelContainer
 var recipe_reveal_overlay: PanelContainer
 var gameover_overlay: PanelContainer
+var reconnecting_overlay: PanelContainer
+var reconnect_status_label: Label # rebuilt each time _show_reconnecting_overlay() runs; updated in place across retry attempts
 
 var debug_toggle_button: Button
 var debug_panel: PanelContainer
 var debug_label: Label
+var tube_inspector: Control # addons/tube/tube_inspector.tscn; nested inside debug_panel, see _build_debug_panel()
 
 func _ready() -> void:
 	theme = GameTheme.get_theme()
@@ -83,6 +109,12 @@ func _ready() -> void:
 	)
 
 	_build_static_ui()
+
+	# Connected once, persistently: NetworkPeer is an autoload that outlives
+	# this scene entirely, so there's never a matching moment to
+	# disconnect it, and it must catch session_ended no matter which
+	# screen is showing when the host closes the session.
+	_network_peer().session_ended.connect(_on_network_session_ended)
 
 	if db == null:
 		prompt_label.text = "Data failed to validate -- see console output."
@@ -154,8 +186,9 @@ func _build_static_ui() -> void:
 	# whatever container is sizing it (it only accounts for one line), so
 	# without a floor here the VBoxContainer can allocate less room than a
 	# two-line prompt actually needs and the text overflows into whatever
-	# sits above it. Tall enough for a two-line PromptLabel + the button row.
-	prompt_panel.custom_minimum_size = Vector2(0, 76)
+	# sits above it. Tall enough for a two-line PromptLabel (18px font) +
+	# the button row.
+	prompt_panel.custom_minimum_size = Vector2(0, 64)
 	main_layout.add_child(prompt_panel)
 
 	var prompt_row := HBoxContainer.new()
@@ -184,6 +217,22 @@ func _build_static_ui() -> void:
 
 	_build_debug_panel()
 
+	# Persistent, top-left (debug_toggle_button already owns top-right);
+	# visibility is toggled per-frame in _apply_overlay_visibility() since
+	# that's the one choke point every _show_*() screen transition already
+	# passes through. This is the ONLY way to leave a network game once
+	# play has actually started -- the lobby's own Leave button only
+	# exists pre-start.
+	leave_game_button = Button.new()
+	leave_game_button.theme_type_variation = "SecondaryButton"
+	leave_game_button.text = "Leave Game"
+	leave_game_button.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	leave_game_button.position = Vector2(8, 8)
+	leave_game_button.size = Vector2(110, 0)
+	leave_game_button.visible = false
+	leave_game_button.pressed.connect(_on_leave_game_pressed)
+	add_child(leave_game_button)
+
 	resized.connect(_on_screen_resized)
 	_on_screen_resized()
 
@@ -199,8 +248,14 @@ func _build_static_ui() -> void:
 func _on_screen_resized() -> void:
 	if size.y <= 0.0 or size.x <= 0.0:
 		return
-	hand_fan.custom_minimum_size.y = clampf(size.y * 0.24, 110.0, 190.0)
-	prompt_panel.custom_minimum_size.y = clampf(size.y * 0.11, 56.0, 76.0)
+	# hand_fan's range is trimmed from the original (110-190 @ 0.24) since
+	# the table no longer scrolls (see TableSurface._init()) -- the board
+	# needs to keep enough of the remaining height for the tallest recipe
+	# panel (a Feast dish's 9 rows) to fit without it, so hand_fan gives up
+	# some of its own share; cards still read fine smaller (HandFan's own
+	# card_h derives from this same height).
+	hand_fan.custom_minimum_size.y = clampf(size.y * 0.18, 100.0, 150.0)
+	prompt_panel.custom_minimum_size.y = clampf(size.y * 0.09, 48.0, 64.0)
 	log_panel.custom_minimum_size.x = clampf(size.x * 0.22, 160.0, 320.0)
 
 func _build_overlays() -> void:
@@ -217,6 +272,7 @@ func _build_overlays() -> void:
 	ai_thinking_overlay = _make_overlay_panel()
 	recipe_reveal_overlay = _make_overlay_panel()
 	gameover_overlay = _make_overlay_panel()
+	reconnecting_overlay = _make_overlay_panel()
 
 func _make_overlay_panel() -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -289,13 +345,71 @@ func _build_debug_panel() -> void:
 	debug_panel.visible = false
 	add_child(debug_panel)
 
+	# Two tabs sharing the one debug_panel/debug_toggle_button: "State" (the
+	# existing shadow-state dump) and "Network" (TubeInspector -- tracker
+	# status, NAT hole-punching viability, per-peer latency). Both live
+	# under the same debug_panel.visible gate, so there's nothing extra to
+	# wire for "players never see it" beyond what already hides debug_panel.
+	var tabs := TabContainer.new()
+	tabs.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tabs.tabs_visible = true
+	debug_panel.add_child(tabs)
+
 	var scroll := ScrollContainer.new()
-	debug_panel.add_child(scroll)
+	scroll.name = "State"
+	tabs.add_child(scroll)
 
 	debug_label = Label.new()
 	debug_label.theme_type_variation = "LogEntryLabel"
 	debug_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	scroll.add_child(debug_label)
+
+	_build_tube_inspector(tabs)
+
+## TubeInspector's own ping/pong (latency) and chat RPCs are real @rpc
+## methods that route by node path, so it must occupy the SAME path on
+## every connected process for those to work at all -- it does, since
+## every peer runs this exact _build_static_ui() -> _build_debug_panel()
+## unconditionally in GameScreen._ready(), regardless of host/client role.
+## Assigning .client here (rather than leaving it unset) is also what
+## actually pulls TubeInspector into that shared MultiplayerAPI tree in
+## the first place -- see client_control.gd's `client` setter.
+func _build_tube_inspector(tabs: TabContainer) -> void:
+	tube_inspector = TUBE_INSPECTOR_SCENE.instantiate()
+	tube_inspector.name = "Network"
+	tabs.add_child(tube_inspector)
+	tube_inspector.client = _network_peer().tube_client
+	_apply_web_inspector_degradation()
+
+## NAT hole punching and UPnP port mapping both rely on native OS/router
+## APIs that don't exist on the Web platform -- client_control.gd already
+## no-ops detect_nat()/detect_upnp_port_mapping() there (posting a warning
+## to the message log instead of running them), but it does NOT touch the
+## two status labels, which would otherwise sit stuck on the addon's own
+## "Unknow" placeholder forever: indistinguishable from a real detection
+## that just hasn't finished yet. Overriding them explicitly here, and
+## disabling the buttons that would otherwise silently no-op when pressed,
+## is what keeps the Web build from showing empty/misleading fields.
+func _apply_web_inspector_degradation() -> void:
+	if OS.get_name() != "Web":
+		return
+	var client_control := tube_inspector.get_node_or_null("%ClientControl")
+	if client_control == null:
+		push_warning("TubeInspector: %ClientControl not found; skipping Web NAT/UPnP degradation")
+		return
+	var nat_label: Label = client_control.get_node_or_null("%NATDetectionLabel")
+	var nat_button: Button = client_control.get_node_or_null("NatContainer/NATDetectionButton")
+	var upnp_label: Label = client_control.get_node_or_null("%UPNPPortMappingLabel")
+	var upnp_button: Button = client_control.get_node_or_null("UPNPContainer/UPNPPortMappingButton")
+	for pair in [[nat_label, nat_button], [upnp_label, upnp_button]]:
+		var label: Label = pair[0]
+		var button: Button = pair[1]
+		if label != null:
+			label.text = "N/A (Web)"
+			label.modulate = Color.GRAY
+		if button != null:
+			button.disabled = true
+			button.tooltip_text = "Not available on the Web platform"
 
 func _on_debug_toggle_pressed() -> void:
 	debug_visible = not debug_visible
@@ -349,6 +463,15 @@ func _show_setup() -> void:
 	title.text = "Manze Lakaz"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)
+
+	if _setup_info_message != "":
+		var info_banner := Label.new()
+		info_banner.theme_type_variation = "PromptLabel"
+		info_banner.text = _setup_info_message
+		info_banner.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		info_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(info_banner)
+		_setup_info_message = "" # one-shot: shown once, then cleared
 
 	var subtitle := Label.new()
 	subtitle.theme_type_variation = "HintLabel"
@@ -404,12 +527,12 @@ func _show_setup() -> void:
 	box.add_child(online_row)
 	var host_btn := Button.new()
 	host_btn.theme_type_variation = "SecondaryButton"
-	host_btn.text = "Host Online Game"
+	host_btn.text = "Create Session"
 	host_btn.pressed.connect(_show_network_setup.bind(true))
 	online_row.add_child(host_btn)
 	var join_btn := Button.new()
 	join_btn.theme_type_variation = "SecondaryButton"
-	join_btn.text = "Join Online Game"
+	join_btn.text = "Join Session"
 	join_btn.pressed.connect(_show_network_setup.bind(false))
 	online_row.add_child(join_btn)
 
@@ -489,6 +612,8 @@ func _on_start_pressed() -> void:
 
 	_clear_children(log_box)
 	selected_card_id = -1
+	selected_move_prep_id = -1
+	_pending_joker_choices = []
 	_dealt_seen.clear()
 	_shown_recipe_completions.clear()
 	_advance_ui_after_state_change()
@@ -508,7 +633,7 @@ func _show_network_setup(is_host: bool) -> void:
 
 	var title := Label.new()
 	title.theme_type_variation = "TitleLabel"
-	title.text = "Host Online Game" if is_host else "Join Online Game"
+	title.text = "Create Session" if is_host else "Join Session"
 	box.add_child(title)
 
 	_add_labeled_line_edit(box, "Your name:", _pending_display_name, func(t): _pending_display_name = t)
@@ -523,8 +648,6 @@ func _show_network_setup(is_host: bool) -> void:
 			b.text = "%d players" % n
 			b.pressed.connect(_on_pending_player_count_pressed.bind(n))
 			count_row.add_child(b)
-
-		_add_labeled_line_edit(box, "Port:", str(_pending_host_port), func(t): _pending_host_port = int(t) if t.is_valid_int() else _pending_host_port)
 
 		var timer_row := HBoxContainer.new()
 		box.add_child(timer_row)
@@ -574,20 +697,28 @@ func _show_network_setup(is_host: bool) -> void:
 
 		var host_button := Button.new()
 		host_button.theme_type_variation = "PrimaryButton"
-		host_button.text = "Start hosting"
+		host_button.text = "Create Session"
 		host_button.custom_minimum_size = Vector2(260, 0)
 		host_button.pressed.connect(_on_host_pressed)
 		box.add_child(host_button)
 	else:
-		_add_labeled_line_edit(box, "Server address:", _pending_join_address, func(t): _pending_join_address = t)
-		_add_labeled_line_edit(box, "Port:", str(_pending_join_port), func(t): _pending_join_port = int(t) if t.is_valid_int() else _pending_join_port)
+		# A session id (not an address:port) -- WebRTC peers don't listen
+		# on a port, so there's nothing to dial directly. The host shares
+		# this short code (from the lobby, once session_ready fires) out
+		# of band, e.g. over chat.
+		_add_labeled_line_edit(box, "Session ID:", _pending_join_session_id, func(t): _pending_join_session_id = t)
 
 		var join_button := Button.new()
 		join_button.theme_type_variation = "PrimaryButton"
-		join_button.text = "Connect"
+		join_button.text = "Join"
 		join_button.custom_minimum_size = Vector2(260, 0)
 		join_button.pressed.connect(_on_join_pressed)
 		box.add_child(join_button)
+
+	network_status_label = Label.new()
+	network_status_label.theme_type_variation = "HintLabel"
+	network_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(network_status_label)
 
 	var back_button := Button.new()
 	back_button.theme_type_variation = "SecondaryButton"
@@ -611,39 +742,116 @@ func _add_labeled_line_edit(box: VBoxContainer, label_text: String, initial_valu
 	edit.text_changed.connect(on_changed)
 	row.add_child(edit)
 
+## Tube's create_session() is signal-driven, not synchronous (the session
+## id doesn't exist until signaling actually starts), so this shows a
+## waiting state immediately and _on_host_session_ready()/
+## _on_network_connection_error() finish the attempt once Tube reports
+## success or failure.
 func _on_host_pressed() -> void:
 	var config := GameConfig.new()
 	config.num_players = _pending_num_players
 	config.seed = int(Time.get_unix_time_from_system() * 1000.0) % 1000000
 
 	var peer := _network_peer()
-	var err: int = peer.start_hosting(db, config, _pending_host_port, _pending_turn_timer_seconds, _pending_auto_play_difficulty, think_time_seconds, _pending_fill_ai, _pending_ai_fill_difficulty)
-	if err != OK:
-		prompt_label.text = "Failed to host (error %d) -- is the port already in use?" % err
-		return
+	peer.session_ready.connect(_on_host_session_ready, CONNECT_ONE_SHOT)
+	peer.connection_error.connect(_on_network_connection_error, CONNECT_ONE_SHOT)
+	peer.create_session(db, config, _pending_turn_timer_seconds, _pending_auto_play_difficulty, think_time_seconds, _pending_fill_ai, _pending_ai_fill_difficulty)
+	_show_connecting_state("Creating session...", true)
 
+func _on_host_session_ready(session_id: String) -> void:
+	var peer := _network_peer()
+	if peer.connection_error.is_connected(_on_network_connection_error):
+		peer.connection_error.disconnect(_on_network_connection_error)
+
+	my_session_id = session_id
 	is_network_mode = true
+	is_network_host = true
 	_connect_session(NetworkSession.new(db, peer))
 	_wire_lobby_signals(peer)
 
 	peer.request_join(_pending_display_name) # host's own seat: no network round-trip needed
 	_show_lobby()
 
+## join_session() is likewise signal-driven; _on_join_session_joined()/
+## _on_network_connection_error() finish the attempt.
 func _on_join_pressed() -> void:
 	var peer := _network_peer()
-	var err: int = peer.join_as_client(_pending_join_address, _pending_join_port, db)
-	if err != OK:
-		prompt_label.text = "Failed to connect (error %d)" % err
-		return
+	peer.session_joined.connect(_on_join_session_joined, CONNECT_ONE_SHOT)
+	peer.connection_error.connect(_on_network_connection_error, CONNECT_ONE_SHOT)
+	peer.join_session(_pending_join_session_id, db)
+	_show_connecting_state("Joining session %s..." % _pending_join_session_id, true)
+
+func _on_join_session_joined() -> void:
+	var peer := _network_peer()
+	if peer.connection_error.is_connected(_on_network_connection_error):
+		peer.connection_error.disconnect(_on_network_connection_error)
 
 	is_network_mode = true
+	is_network_host = false
+	# Not just for the host anymore -- see _run_reconnect_attempts(), which
+	# needs a session id to rejoin regardless of which role disconnected.
+	# The lobby's own "share this code" block stays host-only via the
+	# explicit is_network_host check added there, so this doesn't change
+	# what a joining client sees.
+	my_session_id = peer.session_id
 	_connect_session(NetworkSession.new(db, peer))
 	_wire_lobby_signals(peer)
 
-	multiplayer.connected_to_server.connect(func(): peer.request_join(_pending_display_name), CONNECT_ONE_SHOT)
-	multiplayer.connection_failed.connect(func(): prompt_label.text = "Connection failed.", CONNECT_ONE_SHOT)
-
+	peer.request_join(_pending_display_name)
 	_show_lobby()
+
+## A plain waiting/connecting screen (create and join both use it) --
+## WebRTC signaling can take several seconds, and a player should never
+## be staring at a form that no longer does anything with no way out, so
+## this always offers a way back rather than only on the join side.
+func _show_connecting_state(status_text: String, show_cancel: bool) -> void:
+	ui_mode = UiMode.NETWORK_SETUP
+	_clear_children(network_setup_overlay)
+	var box := _overlay_content_box(network_setup_overlay)
+
+	var label := Label.new()
+	label.theme_type_variation = "TitleLabel"
+	label.text = status_text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(label)
+
+	if show_cancel:
+		var cancel_btn := Button.new()
+		cancel_btn.theme_type_variation = "SecondaryButton"
+		cancel_btn.text = "Cancel"
+		cancel_btn.pressed.connect(_on_connecting_cancel_pressed)
+		box.add_child(cancel_btn)
+
+	_apply_overlay_visibility()
+
+## Aborts whichever attempt is in flight (create or join -- both route
+## through the same waiting screen) and returns to that mode's config
+## screen so the player can adjust and retry.
+func _on_connecting_cancel_pressed() -> void:
+	var peer := _network_peer()
+	if peer.session_ready.is_connected(_on_host_session_ready):
+		peer.session_ready.disconnect(_on_host_session_ready)
+	if peer.session_joined.is_connected(_on_join_session_joined):
+		peer.session_joined.disconnect(_on_join_session_joined)
+	if peer.connection_error.is_connected(_on_network_connection_error):
+		peer.connection_error.disconnect(_on_network_connection_error)
+	peer.shutdown()
+	_show_network_setup(_pending_is_host)
+
+## Shared failure path for both create_session() and join_session().
+## NetworkPeer has already translated whatever Tube/WebRTC reported into
+## plain language (session not found, trackers unreachable, NAT/firewall
+## failure, etc.) -- this only has to display it and give the player
+## somewhere to go, never interpret the message itself.
+func _on_network_connection_error(message: String) -> void:
+	var peer := _network_peer()
+	if peer.session_ready.is_connected(_on_host_session_ready):
+		peer.session_ready.disconnect(_on_host_session_ready)
+	if peer.session_joined.is_connected(_on_join_session_joined):
+		peer.session_joined.disconnect(_on_join_session_joined)
+	_show_network_setup(_pending_is_host)
+	network_status_label.text = message
 
 func _wire_lobby_signals(peer: Node) -> void:
 	if not peer.lobby_changed.is_connected(_on_lobby_changed):
@@ -651,8 +859,15 @@ func _wire_lobby_signals(peer: Node) -> void:
 	if not peer.join_rejected.is_connected(_on_join_rejected):
 		peer.join_rejected.connect(_on_join_rejected)
 
+## Only ever reaches a client (a host never rejects itself). By the time
+## this arrives the WebRTC connection already succeeded, so there's a
+## live session to tear back down before returning to the join screen.
 func _on_join_rejected(reason: String) -> void:
-	prompt_label.text = "Join rejected: %s" % reason
+	if _reconnecting:
+		return # a rejected rejoin token is handled by the reconnect loop's own temporary listener, not this persistent one
+	_do_leave_network_game()
+	_show_network_setup(_pending_is_host)
+	network_status_label.text = reason
 
 func _on_lobby_changed(lobby: Dictionary) -> void:
 	lobby_seats = lobby.get("seats", [])
@@ -669,6 +884,37 @@ func _show_lobby() -> void:
 	title.text = "Lobby"
 	box.add_child(title)
 
+	var peer := _network_peer()
+
+	# The session id is the ONLY thing a player ever types or shares --
+	# there's no address or port anymore -- so it has to be unmissable:
+	# shown large, with a one-tap copy and a plain instruction. Host-only:
+	# my_session_id is populated for clients too now (see
+	# _on_join_session_joined()/_run_reconnect_attempts()), but a joining
+	# client already knows the code -- they typed it in -- so repeating it
+	# back with "send this to your friends" would only be confusing.
+	if my_session_id != "" and is_network_host:
+		var id_label := Label.new()
+		id_label.theme_type_variation = "TitleLabel"
+		id_label.text = my_session_id
+		id_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(id_label)
+
+		var share_line := Label.new()
+		share_line.theme_type_variation = "HintLabel"
+		share_line.text = "Send this code to your friends so they can join."
+		share_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(share_line)
+
+		var copy_btn := Button.new()
+		copy_btn.theme_type_variation = "SecondaryButton"
+		copy_btn.text = "Copy"
+		copy_btn.pressed.connect(func():
+			DisplayServer.clipboard_set(my_session_id)
+			copy_btn.text = "Copied!"
+		)
+		box.add_child(copy_btn)
+
 	for seat_info in lobby_seats:
 		var row := HBoxContainer.new()
 		box.add_child(row)
@@ -678,8 +924,18 @@ func _show_lobby() -> void:
 		label.text = "Seat %d: %s (%s)" % [int(seat_info["seat"]) + 1, str(seat_info["name"]), status]
 		row.add_child(label)
 
-	var peer := _network_peer()
 	if peer.authority != null:
+		# Read-only: fill_empty_seats_with_ai/ai_fill_difficulty are baked
+		# into ServerAuthority at creation time (see _on_host_pressed), so
+		# there's nothing left to toggle here -- just confirm what was
+		# already chosen before this seat count locked in.
+		if _pending_fill_ai:
+			var ai_fill_info := Label.new()
+			ai_fill_info.theme_type_variation = "HintLabel"
+			ai_fill_info.text = "Empty seats will be filled with %s AI when the game starts." % AiBot.DIFFICULTY_NAMES[_pending_ai_fill_difficulty]
+			ai_fill_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			box.add_child(ai_fill_info)
+
 		var start_button := Button.new()
 		start_button.theme_type_variation = "PrimaryButton"
 		start_button.text = "Start game"
@@ -692,6 +948,10 @@ func _show_lobby() -> void:
 		waiting.text = "Waiting for the host to start the game..."
 		box.add_child(waiting)
 
+	# No confirmation here: the game hasn't started yet, so leaving the
+	# lobby doesn't cost anyone else anything. Once play begins,
+	# leave_game_button (see _on_leave_game_pressed) takes over and does
+	# warn, specifically because it's now destructive for everyone else.
 	var leave_button := Button.new()
 	leave_button.theme_type_variation = "SecondaryButton"
 	leave_button.text = "Leave"
@@ -701,9 +961,246 @@ func _show_lobby() -> void:
 	_apply_overlay_visibility()
 
 func _on_leave_lobby_pressed() -> void:
+	_do_leave_network_game()
+	_show_setup()
+
+## The one place that actually tears down a network session this device
+## itself chose to leave -- every self-initiated exit (lobby Leave,
+## mid-game Leave, New Game) routes through here so _leaving_intentionally
+## is always set before shutdown() fires session_ended, which is what
+## keeps _on_network_session_ended() from also treating our own
+## deliberate exit as "the host ended it out from under us".
+func _do_leave_network_game() -> void:
+	_leaving_intentionally = true
+	_reconnecting = false
 	_network_peer().shutdown()
 	is_network_mode = false
+	is_network_host = false
+	my_session_id = ""
+
+## The only way to leave a network game once play has actually started
+## (the lobby's own Leave button only exists pre-start). Hosting is
+## destructive to everyone else -- leaving tears down the one real
+## GameState -- so the host gets a confirmation; a client leaving only
+## affects their own seat, so they don't.
+func _on_leave_game_pressed() -> void:
+	var peer := _network_peer()
+	if peer.authority == null:
+		_do_leave_network_game()
+		_show_setup()
+		return
+
+	# queue_free() connected on every dismissal path (confirm, cancel, and
+	# the window's own close button/Escape) -- AcceptDialog's default
+	# behavior is to hide() itself, not free itself, so without this the
+	# dialog would sit as a permanent invisible child of GameScreen after
+	# every single dismissal, confirmed or not.
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Leave game?"
+	dialog.dialog_text = "Leaving now will end the session for everyone else. Are you sure?"
+	add_child(dialog)
+	dialog.confirmed.connect(func():
+		_do_leave_network_game()
+		_show_setup()
+	)
+	dialog.confirmed.connect(dialog.queue_free)
+	dialog.canceled.connect(dialog.queue_free)
+	dialog.close_requested.connect(dialog.queue_free)
+	dialog.popup_centered()
+
+## Fires whenever Tube tears the session down for any reason: our own
+## Leave/New Game (see _do_leave_network_game -- guarded off below), the
+## host closing the session, or this device's own connection dying
+## post-join. Only the last two should ever reach here uninitiated by us.
+##
+## Tube's session_left/session_ended carries no reason -- there is no way
+## to tell "the host ended it" apart from "my own connection just broke"
+## at this level. For a client holding a still-valid rejoin token, the
+## right move is the same either way: try to reconnect. If the host truly
+## ended things, every rejoin attempt will keep coming back rejected (see
+## ServerAuthority.handle_rejoin_request) and the retry loop below gives
+## up on its own once the 60s budget runs out -- there's no separate "host
+## ended it" fast path to write, because there's no signal to distinguish
+## it by.
+func _on_network_session_ended() -> void:
+	if _leaving_intentionally:
+		_leaving_intentionally = false
+		return
+	var peer := _network_peer()
+	if is_network_mode and not is_network_host and peer.my_token != "":
+		if not _reconnecting:
+			_start_reconnect_loop()
+		return
+	is_network_mode = false
+	is_network_host = false
+	my_session_id = ""
+	_setup_info_message = "The host ended the session."
 	_show_setup()
+
+# ===========================================================================
+# Reconnection (client only -- see _on_network_session_ended)
+# ===========================================================================
+
+func _show_reconnecting_overlay(status_text: String) -> void:
+	ui_mode = UiMode.RECONNECTING
+	_clear_children(reconnecting_overlay)
+	var box := _overlay_content_box(reconnecting_overlay)
+
+	var title := Label.new()
+	title.theme_type_variation = "TitleLabel"
+	title.text = "Reconnecting..."
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+
+	reconnect_status_label = Label.new()
+	reconnect_status_label.theme_type_variation = "HintLabel"
+	reconnect_status_label.text = status_text
+	reconnect_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	reconnect_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(reconnect_status_label)
+
+	_apply_overlay_visibility()
+
+func _start_reconnect_loop() -> void:
+	_reconnecting = true
+	_show_reconnecting_overlay("Connection lost. Reconnecting...")
+	_run_reconnect_attempts()
+
+## Retries join_session() + request_rejoin(token) with backoff for up to
+## RECONNECT_TOTAL_TIMEOUT_SECONDS. On success the existing NetworkSession
+## pipeline takes it from here with no extra code: ServerAuthority's
+## handle_rejoin_request() re-broadcasts the lobby and, if the game had
+## already started, sends a fresh snapshot, which lands on
+## snapshot_received -> state_changed -> _advance_ui_after_state_change(),
+## swapping the reconnecting overlay for the right screen on its own. The
+## one case that pipeline can't cover is a disconnect that happened before
+## the game started (no snapshot is ever sent for a lobby-only rejoin), so
+## that case is handled explicitly below instead.
+func _run_reconnect_attempts() -> void:
+	var peer := _network_peer()
+	var session_id := my_session_id
+	var token: String = peer.my_token
+	var start_ticks := Time.get_ticks_msec()
+	var backoff := RECONNECT_BACKOFF_START_SECONDS
+
+	while true:
+		# Tube emits session_left (which is what got us here) BEFORE it
+		# resets its own client state back to IDLE -- calling
+		# join_session() synchronously in the same frame that produced
+		# this session_ended would still see a non-IDLE client and fail
+		# outright. Deferring one frame gives that reset a chance to land.
+		await get_tree().process_frame
+		if not _reconnecting:
+			return
+
+		var elapsed_ms := Time.get_ticks_msec() - start_ticks
+		if elapsed_ms >= int(RECONNECT_TOTAL_TIMEOUT_SECONDS * 1000.0):
+			break
+
+		if is_instance_valid(reconnect_status_label):
+			reconnect_status_label.text = "Connection lost. Reconnecting..."
+
+		var ok: bool = await _try_reconnect_once(session_id, token)
+		if not _reconnecting:
+			return
+		if ok:
+			_reconnecting = false
+			# state (GameScreen's cached copy) can still be holding a
+			# PREVIOUS game's snapshot from earlier this app session, so
+			# it can't tell "this session's game hasn't started" apart
+			# from "some past session's game had". session itself can:
+			# _on_host_session_ready()/_on_join_session_joined() always
+			# construct a brand new NetworkSession per session, so a
+			# fresh one's own get_state() is null until ITS first
+			# snapshot arrives.
+			var net_session := session as NetworkSession
+			if net_session == null or net_session.get_state() == null:
+				# Disconnected before the game started: no snapshot is
+				# coming, so nothing else will move the UI off this
+				# overlay -- show the lobby ourselves.
+				_show_lobby()
+			return
+
+		elapsed_ms = Time.get_ticks_msec() - start_ticks
+		var remaining_seconds := RECONNECT_TOTAL_TIMEOUT_SECONDS - (elapsed_ms / 1000.0)
+		if remaining_seconds <= 0.0:
+			break
+
+		if is_instance_valid(reconnect_status_label):
+			reconnect_status_label.text = "Still trying to reconnect..."
+		await get_tree().create_timer(minf(backoff, remaining_seconds)).timeout
+		backoff = minf(backoff * 2.0, RECONNECT_BACKOFF_MAX_SECONDS)
+
+	_reconnecting = false
+	_do_leave_network_game()
+	_setup_info_message = "Couldn't reconnect -- the connection stayed down too long."
+	_show_setup()
+
+## One attempt: rejoin the WebRTC session, then redeem the rejoin token.
+## Returns true only once seat_assigned confirms the token was accepted;
+## any connection_error, join_rejected, or timeout returns false so the
+## caller retries. Uses the same one-shot-listener pattern as
+## _on_host_pressed/_on_join_pressed, just chained across two stages
+## instead of one.
+func _try_reconnect_once(session_id: String, token: String) -> bool:
+	var peer := _network_peer()
+	# Lambdas capture outer locals BY VALUE at the moment each lambda
+	# literal is created -- on_session_joined needs to reach the (not yet
+	# created) on_seat_assigned/on_join_rejected callables, and all four
+	# need to reach the (also not yet fully populated) disconnect_all.
+	# Boxing everything in one shared, mutable Dictionary sidesteps that:
+	# every lookup below happens at CALL time, once the signal actually
+	# fires, by which point ctx["callables"] has long since been filled in.
+	var ctx := {"result": null, "callables": {}} # result: null = pending, true/false once settled
+
+	var disconnect_all := func():
+		var c: Dictionary = ctx["callables"]
+		if peer.session_joined.is_connected(c["session_joined"]):
+			peer.session_joined.disconnect(c["session_joined"])
+		if peer.connection_error.is_connected(c["connection_error"]):
+			peer.connection_error.disconnect(c["connection_error"])
+		if peer.seat_assigned.is_connected(c["seat_assigned"]):
+			peer.seat_assigned.disconnect(c["seat_assigned"])
+		if peer.join_rejected.is_connected(c["join_rejected"]):
+			peer.join_rejected.disconnect(c["join_rejected"])
+
+	var on_seat_assigned := func(_seat: int, _token: String):
+		disconnect_all.call()
+		ctx["result"] = true
+	var on_join_rejected := func(_reason: String):
+		disconnect_all.call()
+		ctx["result"] = false
+	var on_session_joined := func():
+		var c: Dictionary = ctx["callables"]
+		peer.seat_assigned.connect(c["seat_assigned"], CONNECT_ONE_SHOT)
+		peer.join_rejected.connect(c["join_rejected"], CONNECT_ONE_SHOT)
+		peer.request_rejoin(token)
+	var on_connection_error := func(_message: String):
+		disconnect_all.call()
+		ctx["result"] = false
+
+	ctx["callables"] = {
+		"session_joined": on_session_joined,
+		"connection_error": on_connection_error,
+		"seat_assigned": on_seat_assigned,
+		"join_rejected": on_join_rejected,
+	}
+
+	peer.session_joined.connect(on_session_joined, CONNECT_ONE_SHOT)
+	peer.connection_error.connect(on_connection_error, CONNECT_ONE_SHOT)
+	peer.join_session(session_id, db)
+
+	var waited := 0.0
+	while ctx["result"] == null and waited < RECONNECT_ATTEMPT_TIMEOUT_SECONDS and _reconnecting:
+		await get_tree().create_timer(0.25).timeout
+		waited += 0.25
+
+	if ctx["result"] == null:
+		disconnect_all.call()
+		peer.shutdown() # force this attempt's half-open transport down before the next one starts
+		return false
+
+	return ctx["result"]
 
 # ===========================================================================
 # Turn-owner change detection -> hot-seat privacy (network mode never gates)
@@ -744,6 +1241,8 @@ func _advance_ui_after_state_change() -> void:
 
 	if state.current_player_index != hot_seat.viewer_index():
 		selected_card_id = -1
+		selected_move_prep_id = -1
+		_pending_joker_choices = []
 		_show_pass_device()
 		return
 
@@ -805,38 +1304,56 @@ func _show_recipe_reveal() -> void:
 	times.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(times)
 
-	var ingredients_title := Label.new()
-	ingredients_title.theme_type_variation = "SectionLabel"
-	ingredients_title.text = "Real ingredients"
-	box.add_child(ingredients_title)
-
 	var ingredients: Array = view["ingredients"]
-	if ingredients.is_empty():
+	var steps: Array = view["steps"]
+
+	if ingredients.is_empty() and steps.is_empty():
 		var none_label := Label.new()
 		none_label.theme_type_variation = "HintLabel"
 		none_label.text = "(recipe details coming soon)"
 		box.add_child(none_label)
 	else:
+		# Ingredients (left) and how-to-make-it steps (right) side by side,
+		# not one long stacked list -- a Feast dish's full method can run to
+		# 8-9 detailed steps, which read far more comfortably as a second
+		# column than as a single narrow list stretching down the overlay.
+		var columns := HBoxContainer.new()
+		columns.theme_type_variation = "WideHBox"
+		box.add_child(columns)
+
+		var ingredients_col := VBoxContainer.new()
+		ingredients_col.theme_type_variation = "TightVBox"
+		ingredients_col.custom_minimum_size = Vector2(230, 0)
+		columns.add_child(ingredients_col)
+
+		var ingredients_title := Label.new()
+		ingredients_title.theme_type_variation = "SectionLabel"
+		ingredients_title.text = "Real ingredients"
+		ingredients_col.add_child(ingredients_title)
+
 		for ing in ingredients:
 			var row := Label.new()
 			row.theme_type_variation = "RecipeSlotFilledLabel"
 			row.text = "%s -- %s" % [ing["quantity"], ing["name"]]
 			row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			box.add_child(row)
+			ingredients_col.add_child(row)
 
-	var steps: Array = view["steps"]
-	if not steps.is_empty():
+		var steps_col := VBoxContainer.new()
+		steps_col.theme_type_variation = "TightVBox"
+		steps_col.custom_minimum_size = Vector2(320, 0)
+		columns.add_child(steps_col)
+
 		var steps_title := Label.new()
 		steps_title.theme_type_variation = "SectionLabel"
 		steps_title.text = "How to make it"
-		box.add_child(steps_title)
+		steps_col.add_child(steps_title)
 
 		for i in steps.size():
 			var step_row := Label.new()
 			step_row.theme_type_variation = "RecipeSlotEmptyLabel"
 			step_row.text = "%d. %s" % [i + 1, steps[i]]
 			step_row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			box.add_child(step_row)
+			steps_col.add_child(step_row)
 
 	var continue_btn := Button.new()
 	continue_btn.theme_type_variation = "PrimaryButton"
@@ -1099,44 +1616,69 @@ func _render_table(legal: Array) -> void:
 	table_surface.update_piles(state.deck.size(), state.discard_pile.size(), top_discard, discard_takeable)
 
 	_clear_children(table_surface.own_recipes_box)
+	_own_recipe_panel_nodes.clear()
 	var player := state.players[_viewer_index()]
 	for ri in player.recipes.size():
-		table_surface.own_recipes_box.add_child(_build_own_recipe_panel(player.recipes[ri], ri, legal))
+		var panel := _build_own_recipe_panel(player.recipes[ri], ri, legal)
+		_own_recipe_panel_nodes[ri] = panel
+		table_surface.own_recipes_box.add_child(panel)
+
+const RECIPE_PANEL_WIDTH := 300.0
+const RECIPE_PANEL_PADDING := 20.0 # PanelContainer content margin, both sides
+const RECIPE_SLOT_COLUMNS := 2
+const RECIPE_SLOT_H_SEPARATION := 8.0
+## Each slot label/button is told this width up front (rather than letting
+## the grid negotiate it) because a WORD_SMART-autowrap Label under-reports
+## its own minimum height until it already knows how wide it'll be -- without
+## this, a long name like "Island Spice Blend" wrapping to 2 lines wouldn't
+## be accounted for until after layout, and the panel would report itself
+## shorter than its actual rendered content, spilling text past its own
+## drawn border.
+const RECIPE_SLOT_COLUMN_WIDTH := (RECIPE_PANEL_WIDTH - RECIPE_PANEL_PADDING - RECIPE_SLOT_H_SEPARATION) / RECIPE_SLOT_COLUMNS
 
 func _build_own_recipe_panel(recipe: Recipe, ri: int, legal: Array) -> Control:
 	var outer := PanelContainer.new()
-	# Wide enough for the longest real recipe title + tier suffix ("Creole
-	# Fish Curry (Feast)") and the longest ingredient/prep slot line ("[ ]
-	# Island Spice Blend") without relying on the panel growing past this
-	# floor to fit them -- when this panel is a legal attach target (see
-	# below), its content is anchored inside a Button instead of flowing
-	# normally, which means it does NOT grow past this floor even if its
-	# text needs more room. Every label below carries its own autowrap so
-	# text that still doesn't fit wraps to a second line instead of
-	# clipping, regardless of which of the two layouts is in play.
-	outer.custom_minimum_size = Vector2(260, 0)
+	outer.custom_minimum_size = Vector2(RECIPE_PANEL_WIDTH, 0)
+	outer.mouse_default_cursor_shape = Control.CURSOR_ARROW
 
 	var attach_action: Action = null
-	if selected_card_id != -1:
+	if selected_card_id != -1 and _pending_joker_choices.is_empty():
 		attach_action = _find_attach_action(legal, selected_card_id, ri)
 
-	var box := VBoxContainer.new()
+	var move_action: Action = null
+	if selected_move_prep_id != -1:
+		move_action = _find_move_preparation_action(legal, selected_move_prep_id, ri)
 
+	# outer.gui_input (not a Button wrapping the content) so this panel's own
+	# reported minimum size always comes from its real content (art + title +
+	# slot grid) the normal PanelContainer way -- a Button doesn't propagate
+	# an anchored child's natural size up to its own minimum size, which
+	# previously meant a highlighted (legal-target) panel could report itself
+	# far shorter than its actual content and spill past its own bottom edge.
 	if attach_action != null:
 		outer.theme_type_variation = "DecoyTargetHighlight" if attach_action.as_decoy else "LegalTargetHighlight"
-		var btn := Button.new()
-		btn.theme_type_variation = "InvisibleFillButton"
-		btn.pressed.connect(_on_recipe_target_pressed.bind(ri, outer))
-		outer.add_child(btn)
-		btn.add_child(box)
-		box.set_anchors_preset(Control.PRESET_FULL_RECT)
+		outer.mouse_filter = Control.MOUSE_FILTER_STOP
+		outer.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		outer.gui_input.connect(_on_recipe_panel_gui_input.bind(ri, outer, false))
+	elif move_action != null:
+		outer.theme_type_variation = "LegalTargetHighlight"
+		outer.mouse_filter = Control.MOUSE_FILTER_STOP
+		outer.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		outer.gui_input.connect(_on_recipe_panel_gui_input.bind(ri, outer, true))
 	else:
 		outer.theme_type_variation = "RecipePanelComplete" if recipe.completed else "RecipePanel"
-		outer.add_child(box)
+
+	# TightVBox (2px separation), not the 6px VBoxContainer default: with the
+	# table no longer scrolling, every row this panel's own height needs
+	# beyond what's actually available pushes it past the felt board's
+	# bottom edge.
+	var box := VBoxContainer.new()
+	box.theme_type_variation = "TightVBox"
+	outer.add_child(box)
 
 	var art := CardArtPlaceholder.new()
 	art.category_key = "recipe"
-	art.custom_minimum_size = Vector2(0, 40)
+	art.custom_minimum_size = Vector2(0, 28)
 	box.add_child(art)
 
 	var title := Label.new()
@@ -1145,14 +1687,51 @@ func _build_own_recipe_panel(recipe: Recipe, ri: int, legal: Array) -> Control:
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(title)
 
+	# Two columns instead of one long stacked list: a Feast dish's 9 rows
+	# (6 ingredients + 2 preparations + grill) in a single column ran the
+	# panel's content taller than it reported itself, given the Label
+	# under-reporting issue above -- splitting into a grid roughly halves
+	# the row count.
+	var grid := GridContainer.new()
+	grid.columns = RECIPE_SLOT_COLUMNS
+	grid.add_theme_constant_override("h_separation", int(RECIPE_SLOT_H_SEPARATION))
+	grid.add_theme_constant_override("v_separation", 2)
+	box.add_child(grid)
+
+	# A filled preparation slot is its own click target (to pick it up for
+	# MOVE_PREPARATION) whenever this whole panel isn't already a click
+	# target itself (see outer.gui_input above -- a nested click target
+	# inside another would be ambiguous) and no hand card is currently
+	# selected.
+	var preps_selectable := attach_action == null and move_action == null and selected_card_id == -1 and not recipe.completed
 	for slot in GameViewModel.own_recipe_slots(recipe, db):
-		var row := Label.new()
-		row.theme_type_variation = "RecipeSlotFilledLabel" if slot["filled"] else "RecipeSlotEmptyLabel"
-		row.text = ("[x] " if slot["filled"] else "[ ] ") + slot["label"]
-		row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		box.add_child(row)
+		if preps_selectable and not slot["is_ingredient"] and slot["filled"] and slot["card_instance_id"] != -1:
+			var prep_card_id: int = slot["card_instance_id"]
+			var row_btn := Button.new()
+			row_btn.theme_type_variation = "RecipeSlotFilledButtonSelected" if prep_card_id == selected_move_prep_id else "RecipeSlotFilledButton"
+			row_btn.text = "[x] " + slot["label"]
+			row_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			row_btn.custom_minimum_size.x = RECIPE_SLOT_COLUMN_WIDTH
+			row_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row_btn.pressed.connect(_on_prep_slot_clicked.bind(prep_card_id))
+			grid.add_child(row_btn)
+		else:
+			var row := Label.new()
+			row.theme_type_variation = "RecipeSlotFilledLabel" if slot["filled"] else "RecipeSlotEmptyLabel"
+			row.text = ("[x] " if slot["filled"] else "[ ] ") + slot["label"]
+			row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			row.custom_minimum_size.x = RECIPE_SLOT_COLUMN_WIDTH
+			row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			grid.add_child(row)
 
 	return outer
+
+func _on_recipe_panel_gui_input(event: InputEvent, recipe_index: int, panel_node: Control, is_move: bool) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		if is_move:
+			_on_move_target_pressed(recipe_index, panel_node)
+		else:
+			_on_recipe_target_pressed(recipe_index, panel_node)
 
 func _render_hand(legal: Array) -> void:
 	var player := state.players[_viewer_index()]
@@ -1166,6 +1745,42 @@ func _render_hand(legal: Array) -> void:
 
 func _render_prompt_bar(legal: Array) -> void:
 	_clear_children(prompt_buttons_box)
+
+	if not _pending_joker_choices.is_empty():
+		var card := state.players[_viewer_index()].find_in_hand(selected_card_id)
+		var card_name := GameViewModel.card_label(card.def_id, card.category, db) if card != null else "that card"
+		prompt_label.text = "Selected %s -- choose which ingredient it stands in for" % card_name
+
+		for a in _pending_joker_choices:
+			var choice_btn := Button.new()
+			choice_btn.theme_type_variation = "PrimaryButtonCompact"
+			choice_btn.text = GameViewModel.card_label(a.target_def_id, CardDef.Category.INGREDIENT, db)
+			choice_btn.pressed.connect(_on_joker_slot_chosen.bind(a))
+			prompt_buttons_box.add_child(choice_btn)
+
+		var joker_cancel_btn := Button.new()
+		joker_cancel_btn.theme_type_variation = "SecondaryButton"
+		joker_cancel_btn.text = "Cancel"
+		joker_cancel_btn.pressed.connect(_on_cancel_selection_pressed)
+		prompt_buttons_box.add_child(joker_cancel_btn)
+		return
+
+	if selected_move_prep_id != -1:
+		var player := state.players[_viewer_index()]
+		var prep_card: Card = null
+		for recipe in player.recipes:
+			prep_card = recipe.find_attached_card(selected_move_prep_id)
+			if prep_card != null:
+				break
+		var prep_name := GameViewModel.card_label(prep_card.def_id, prep_card.category, db) if prep_card != null else "that preparation"
+		prompt_label.text = "Selected %s -- click a glowing recipe to move it there" % prep_name
+
+		var move_cancel_btn := Button.new()
+		move_cancel_btn.theme_type_variation = "SecondaryButton"
+		move_cancel_btn.text = "Cancel"
+		move_cancel_btn.pressed.connect(_on_cancel_move_pressed)
+		prompt_buttons_box.add_child(move_cancel_btn)
+		return
 
 	if selected_card_id != -1:
 		var card := state.players[_viewer_index()].find_in_hand(selected_card_id)
@@ -1192,7 +1807,7 @@ func _render_prompt_bar(legal: Array) -> void:
 
 	if _has_action_type(legal, Action.Type.DRAW):
 		var draw_btn := Button.new()
-		draw_btn.theme_type_variation = "PrimaryButton"
+		draw_btn.theme_type_variation = "PrimaryButtonCompact"
 		draw_btn.text = "Draw"
 		draw_btn.pressed.connect(_on_draw_pressed)
 		prompt_buttons_box.add_child(draw_btn)
@@ -1209,6 +1824,12 @@ func _render_prompt_bar(legal: Array) -> void:
 		discard_hint.text = "or click the discard pile to take the top card"
 		prompt_buttons_box.add_child(discard_hint)
 
+	if _has_action_type(legal, Action.Type.MOVE_PREPARATION):
+		var move_hint := Label.new()
+		move_hint.theme_type_variation = "HintLabel"
+		move_hint.text = "or click a preparation on one of your recipes to move it to another"
+		prompt_buttons_box.add_child(move_hint)
+
 	if legal.is_empty() and state.current_player_index != _viewer_index():
 		var waiting_hint := Label.new()
 		waiting_hint.theme_type_variation = "HintLabel"
@@ -1223,11 +1844,24 @@ func _render_prompt_bar(legal: Array) -> void:
 # --- action handlers -------------------------------------------------------
 
 func _on_hand_card_clicked(instance_id: int) -> void:
+	selected_move_prep_id = -1
+	_pending_joker_choices = []
 	selected_card_id = -1 if selected_card_id == instance_id else instance_id
 	_refresh_play_view()
 
 func _on_cancel_selection_pressed() -> void:
 	selected_card_id = -1
+	_pending_joker_choices = []
+	_refresh_play_view()
+
+func _on_prep_slot_clicked(card_instance_id: int) -> void:
+	selected_card_id = -1
+	_pending_joker_choices = []
+	selected_move_prep_id = -1 if selected_move_prep_id == card_instance_id else card_instance_id
+	_refresh_play_view()
+
+func _on_cancel_move_pressed() -> void:
+	selected_move_prep_id = -1
 	_refresh_play_view()
 
 func _on_draw_pressed() -> void:
@@ -1253,7 +1887,7 @@ func _on_take_discard_pressed() -> void:
 
 	var from := table_surface.get_discard_marker_global_position()
 	var to := hand_fan.get_fan_center_global_position()
-	CardAnimator.fly(animation_layer, from, to, label, cat, "draw")
+	CardAnimator.fly(animation_layer, from, to, label, cat, "draw", top.def_id)
 
 	var action := Action.make_take_discard(_viewer_index())
 	var line := GameViewModel.describe_action_for_log(state, action)
@@ -1277,7 +1911,7 @@ func _on_steal_requested(target_player_index: int, target_recipe_index: int, car
 	var panel: PlayerPanel = _player_panel_nodes.get(target_player_index)
 	var from: Vector2 = (panel.global_position + panel.size * 0.5) if panel != null else get_global_rect().get_center()
 	var to := hand_fan.get_fan_center_global_position()
-	CardAnimator.fly(animation_layer, from, to, label, cat, "steal")
+	CardAnimator.fly(animation_layer, from, to, label, cat, "steal", card.def_id if card != null else "")
 
 	var line := GameViewModel.describe_action_for_log(state, action)
 	selected_card_id = -1
@@ -1287,21 +1921,61 @@ func _on_steal_requested(target_player_index: int, target_recipe_index: int, car
 
 func _on_recipe_target_pressed(recipe_index: int, panel_node: Control) -> void:
 	var legal := session.get_legal_actions()
-	var action := _find_attach_action(legal, selected_card_id, recipe_index)
+	var matches := _find_attach_actions(legal, selected_card_id, recipe_index)
+	if matches.is_empty():
+		return
+
+	# A joker matching more than one open slot on this recipe (e.g. a
+	# Vegetable Joker against a recipe needing both tomato and onion) can't
+	# be resolved to a single action yet -- ask which slot via the prompt
+	# bar (see _render_prompt_bar's _pending_joker_choices branch) instead
+	# of guessing.
+	if matches.size() > 1:
+		_pending_joker_choices = matches
+		_refresh_play_view()
+		return
+
+	_apply_attach_action(matches[0], panel_node)
+
+func _on_joker_slot_chosen(action: Action) -> void:
+	var panel_node: Control = _own_recipe_panel_nodes.get(action.recipe_index)
+	_pending_joker_choices = []
+	_apply_attach_action(action, panel_node)
+
+func _apply_attach_action(action: Action, panel_node: Control) -> void:
+	var player := state.players[_viewer_index()]
+	var card := player.find_in_hand(action.card_instance_id)
+	var label := GameViewModel.card_label(card.def_id, card.category, db) if card != null else ""
+	var cat := CardCategoryMap.category_for(card.def_id, card.category) if card != null else CardCategoryMap.PANTRY
+
+	var from := hand_fan.get_card_global_position(action.card_instance_id)
+	var to: Vector2 = (panel_node.global_position + panel_node.size * 0.5) if panel_node != null else from
+	CardAnimator.fly(animation_layer, from, to, label, cat, "attach", card.def_id if card != null else "")
+
+	var line := GameViewModel.describe_action_for_log(state, action)
+	selected_card_id = -1
+	_submit_action(action)
+	if not is_network_mode:
+		_append_log_line(line)
+
+func _on_move_target_pressed(recipe_index: int, panel_node: Control) -> void:
+	var legal := session.get_legal_actions()
+	var action := _find_move_preparation_action(legal, selected_move_prep_id, recipe_index)
 	if action == null:
 		return
 
 	var player := state.players[_viewer_index()]
-	var card := player.find_in_hand(selected_card_id)
+	var from_panel: Control = _own_recipe_panel_nodes.get(action.recipe_index)
+	var card := player.recipes[action.recipe_index].find_attached_card(selected_move_prep_id)
 	var label := GameViewModel.card_label(card.def_id, card.category, db) if card != null else ""
-	var cat := CardCategoryMap.category_for(card.def_id, card.category) if card != null else CardCategoryMap.PANTRY
+	var cat := CardCategoryMap.category_for(card.def_id, card.category) if card != null else CardCategoryMap.PREPARATION
 
-	var from := hand_fan.get_card_global_position(selected_card_id)
+	var from: Vector2 = (from_panel.global_position + from_panel.size * 0.5) if from_panel != null else get_global_rect().get_center()
 	var to: Vector2 = panel_node.global_position + panel_node.size * 0.5
-	CardAnimator.fly(animation_layer, from, to, label, cat, "attach")
+	CardAnimator.fly(animation_layer, from, to, label, cat, "attach", card.def_id if card != null else "")
 
 	var line := GameViewModel.describe_action_for_log(state, action)
-	selected_card_id = -1
+	selected_move_prep_id = -1
 	_submit_action(action)
 	if not is_network_mode:
 		_append_log_line(line)
@@ -1314,7 +1988,7 @@ func _on_discard_pressed(card_instance_id: int) -> void:
 
 	var from := hand_fan.get_card_global_position(card_instance_id)
 	var to := table_surface.get_discard_marker_global_position()
-	CardAnimator.fly(animation_layer, from, to, label, cat, "discard")
+	CardAnimator.fly(animation_layer, from, to, label, cat, "discard", card.def_id if card != null else "")
 
 	var action := Action.make_discard(_viewer_index(), card_instance_id)
 	var line := GameViewModel.describe_action_for_log(state, action)
@@ -1378,8 +2052,7 @@ func _winning_recipes() -> Array[Recipe]:
 
 func _on_new_game_pressed() -> void:
 	if is_network_mode:
-		_network_peer().shutdown()
-		is_network_mode = false
+		_do_leave_network_game()
 	_show_setup()
 
 # ===========================================================================
@@ -1397,6 +2070,23 @@ func _has_action_type(legal: Array, type: int) -> bool:
 func _find_attach_action(legal: Array, card_instance_id: int, recipe_index: int) -> Action:
 	for a in legal:
 		if a.type == Action.Type.ATTACH and a.card_instance_id == card_instance_id and a.recipe_index == recipe_index:
+			return a
+	return null
+
+## Every legal ATTACH for this (card, recipe) pair -- ordinarily at most one,
+## but a joker can match more than one open slot on the same recipe (see
+## RulesEngine._add_joker_attach_actions), which is exactly the ambiguity
+## _on_recipe_target_pressed needs to detect.
+func _find_attach_actions(legal: Array, card_instance_id: int, recipe_index: int) -> Array[Action]:
+	var out: Array[Action] = []
+	for a in legal:
+		if a.type == Action.Type.ATTACH and a.card_instance_id == card_instance_id and a.recipe_index == recipe_index:
+			out.append(a)
+	return out
+
+func _find_move_preparation_action(legal: Array, card_instance_id: int, to_recipe_index: int) -> Action:
+	for a in legal:
+		if a.type == Action.Type.MOVE_PREPARATION and a.card_instance_id == card_instance_id and a.move_to_recipe_index == to_recipe_index:
 			return a
 	return null
 
@@ -1431,8 +2121,12 @@ func _apply_overlay_visibility() -> void:
 	ai_thinking_overlay.visible = ui_mode == UiMode.AI_THINKING
 	recipe_reveal_overlay.visible = ui_mode == UiMode.RECIPE_REVEAL
 	gameover_overlay.visible = ui_mode == UiMode.GAME_OVER
+	reconnecting_overlay.visible = ui_mode == UiMode.RECONNECTING
 	overlay_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE if ui_mode == UiMode.PLAY else Control.MOUSE_FILTER_STOP
 	main_layout.visible = ui_mode == UiMode.PLAY
+
+	var game_in_progress := ui_mode in [UiMode.DRAFT, UiMode.PLAY, UiMode.AI_THINKING, UiMode.RECIPE_REVEAL]
+	leave_game_button.visible = is_network_mode and game_in_progress
 
 func _clear_children(node: Node) -> void:
 	# queue_free(), not free(): this is routinely called while rebuilding

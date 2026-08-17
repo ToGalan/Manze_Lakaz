@@ -26,6 +26,9 @@ const _INGREDIENT_CATEGORY := {
 	"goat": PROTEIN,
 	"lime": VEGETABLE,
 	"eggs": PROTEIN,
+	"joker_protein": PROTEIN,
+	"joker_vegetable": VEGETABLE,
+	"joker_pantry": PANTRY,
 }
 
 ## Unknown ingredient ids (e.g. after a balance-data edit adds a new one)

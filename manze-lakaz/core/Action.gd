@@ -3,7 +3,7 @@ extends RefCounted
 ## One legal move. Every state transition in RulesEngine goes through an
 ## Action produced by get_legal_actions() and consumed by apply_action().
 
-enum Type { DRAFT_KEEP, DRAW, STEAL, ATTACH, DISCARD, TAKE_DISCARD }
+enum Type { DRAFT_KEEP, DRAW, STEAL, ATTACH, DISCARD, TAKE_DISCARD, MOVE_PREPARATION }
 
 var type: int
 var player_index: int = -1
@@ -20,12 +20,24 @@ var target_recipe_index: int = -1
 ## card currently attached to target_player's target_recipe.
 var card_instance_id: int = -1
 
-## ATTACH only: which of the acting player's own recipes to attach to.
+## ATTACH: which of the acting player's own recipes to attach to.
+## MOVE_PREPARATION: the recipe the preparation card is currently on (the
+## "from" side of the move -- see move_to_recipe_index for the "to" side).
 var recipe_index: int = -1
 
 ## ATTACH only: true if this attaches an ingredient that does not fill an
 ## open required slot (only possible when DECOYS_ENABLED is on).
 var as_decoy: bool = false
+
+## ATTACH only (non-decoy): the specific required slot def_id this card is
+## filling. Equal to the card's own def_id for a normal card, but may name a
+## different def_id when the card is a joker (CardDef.is_joker) standing in
+## for one specific open slot of its own ingredient_type.
+var target_def_id: String = ""
+
+## MOVE_PREPARATION only: which of the acting player's own recipes the
+## preparation card is being moved to.
+var move_to_recipe_index: int = -1
 
 static func make_draft_keep(player_index: int, recipe_id: String) -> Action:
 	var a := Action.new()
@@ -55,13 +67,14 @@ static func make_steal(player_index: int, target_player_index: int, target_recip
 	a.card_instance_id = card_instance_id
 	return a
 
-static func make_attach(player_index: int, card_instance_id: int, recipe_index: int, as_decoy: bool) -> Action:
+static func make_attach(player_index: int, card_instance_id: int, recipe_index: int, as_decoy: bool, target_def_id: String = "") -> Action:
 	var a := Action.new()
 	a.type = Type.ATTACH
 	a.player_index = player_index
 	a.card_instance_id = card_instance_id
 	a.recipe_index = recipe_index
 	a.as_decoy = as_decoy
+	a.target_def_id = target_def_id
 	return a
 
 static func make_discard(player_index: int, card_instance_id: int) -> Action:
@@ -69,6 +82,15 @@ static func make_discard(player_index: int, card_instance_id: int) -> Action:
 	a.type = Type.DISCARD
 	a.player_index = player_index
 	a.card_instance_id = card_instance_id
+	return a
+
+static func make_move_preparation(player_index: int, card_instance_id: int, from_recipe_index: int, to_recipe_index: int) -> Action:
+	var a := Action.new()
+	a.type = Type.MOVE_PREPARATION
+	a.player_index = player_index
+	a.card_instance_id = card_instance_id
+	a.recipe_index = from_recipe_index
+	a.move_to_recipe_index = to_recipe_index
 	return a
 
 func equals(other: Action) -> bool:
@@ -86,11 +108,16 @@ func equals(other: Action) -> bool:
 		Type.ATTACH:
 			return other.card_instance_id == card_instance_id \
 				and other.recipe_index == recipe_index \
-				and other.as_decoy == as_decoy
+				and other.as_decoy == as_decoy \
+				and other.target_def_id == target_def_id
 		Type.DISCARD:
 			return other.card_instance_id == card_instance_id
 		Type.TAKE_DISCARD:
 			return true
+		Type.MOVE_PREPARATION:
+			return other.card_instance_id == card_instance_id \
+				and other.recipe_index == recipe_index \
+				and other.move_to_recipe_index == move_to_recipe_index
 	return false
 
 func describe() -> String:
@@ -102,7 +129,10 @@ func describe() -> String:
 		Type.STEAL:
 			return "P%d: STEAL card#%d from P%d recipe#%d" % [player_index, card_instance_id, target_player_index, target_recipe_index]
 		Type.ATTACH:
-			return "P%d: ATTACH card#%d to recipe#%d%s" % [player_index, card_instance_id, recipe_index, (" (decoy)" if as_decoy else "")]
+			var slot_note := "" if as_decoy else " as %s" % target_def_id
+			return "P%d: ATTACH card#%d to recipe#%d%s%s" % [player_index, card_instance_id, recipe_index, slot_note, (" (decoy)" if as_decoy else "")]
 		Type.DISCARD:
 			return "P%d: DISCARD card#%d" % [player_index, card_instance_id]
+		Type.MOVE_PREPARATION:
+			return "P%d: MOVE prep card#%d from recipe#%d to recipe#%d" % [player_index, card_instance_id, recipe_index, move_to_recipe_index]
 	return "P%d: <unknown action>" % player_index

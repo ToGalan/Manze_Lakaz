@@ -26,7 +26,9 @@ func test_deck_totals_match_spec() -> void:
 		return
 	var db := result.database
 	var deck := db.build_deck()
-	TestUtil.assert_eq(deck.size(), 92, "the full deck should contain exactly 92 cards")
+	# 68 original ingredient cards + 6 jokers (2 each of joker_protein/
+	# joker_vegetable/joker_pantry) + 24 preparations = 98.
+	TestUtil.assert_eq(deck.size(), 98, "the full deck should contain exactly 98 cards")
 	TestUtil.assert_eq(db.recipe_order.size(), 12, "there should be exactly 12 recipe cards")
 
 	var ingredient_count := 0
@@ -36,5 +38,5 @@ func test_deck_totals_match_spec() -> void:
 			ingredient_count += 1
 		else:
 			preparation_count += 1
-	TestUtil.assert_eq(ingredient_count, 68, "68 ingredient cards expected in the deck")
+	TestUtil.assert_eq(ingredient_count, 74, "74 ingredient cards expected in the deck (68 original + 6 jokers)")
 	TestUtil.assert_eq(preparation_count, 24, "24 preparation cards expected in the deck")

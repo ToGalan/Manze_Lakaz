@@ -27,51 +27,42 @@ func _init() -> void:
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(margin)
 
-	# A ScrollContainer (not a bare CenterContainer) so a recipe with many
-	# required slots -- a Feast dish can be 6 ingredients + 2 preparations
-	# + grill, 9+ rows in one panel -- scrolls and clips to the table's own
-	# bounds instead of overflowing past it into whatever control sits
-	# below (the prompt bar), which is what "overlaps and blocks the list"
-	# actually was: not a z-order bug, a missing-clip bug.
-	var scroll := ScrollContainer.new()
-	scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	margin.add_child(scroll)
-
-	# ScrollContainer never hands its child more than the child's own
-	# minimum size -- it does NOT honor size_flags like SHRINK_CENTER and
-	# does NOT give a smaller child the rest of its available space, so the
-	# row would otherwise sit pinned at the top-left with dead space to the
-	# right/bottom instead of actually being centered. A CenterContainer
-	# whose minimum size is forced to match the scroll view (kept in sync
-	# on resize) is what makes it genuinely center -- and once the row's
-	# real content outgrows that floor, its minimum grows past it and
-	# scrolling takes over exactly as before.
+	# No ScrollContainer: the table never scrolls, so its own available
+	# height has to genuinely fit the tallest recipe panel (see
+	# GameScreen._on_screen_resized(), which sizes hand_fan/prompt_panel to
+	# leave the table enough room, and _build_own_recipe_panel(), which
+	# keeps each recipe panel's own rows compact). A plain CenterContainer
+	# centers `row` within whatever this margin gives it with no extra sync
+	# needed (unlike ScrollContainer, it hands a smaller child the rest of
+	# its available space itself).
 	var center := CenterContainer.new()
-	scroll.add_child(center)
+	margin.add_child(center)
 
 	var row := HBoxContainer.new()
 	row.theme_type_variation = "WideHBox"
 	center.add_child(row)
 
-	# Deferred for the same reason as the CardFace setup below: _init() runs
-	# while this whole subtree is still detached (TableSurface itself isn't
-	# parented into GameScreen's live tree yet), so scroll.size would read
-	# (0, 0) if read synchronously here.
-	_sync_center_to_scroll.call_deferred(scroll, center)
-	scroll.resized.connect(_sync_center_to_scroll.bind(scroll, center))
-
 	own_recipes_box = HBoxContainer.new()
 	own_recipes_box.theme_type_variation = "WideHBox"
 	row.add_child(own_recipes_box)
 
-	var piles_col := VBoxContainer.new()
-	piles_col.theme_type_variation = "WideVBox"
-	row.add_child(piles_col)
+	var piles_row := HBoxContainer.new()
+	piles_row.theme_type_variation = "WideHBox"
+	# Without this, HBoxContainer's default vertical FILL stretches piles_row
+	# to match `row`'s full cross-axis height -- which is set by the tallest
+	# sibling, own_recipes_box (a multi-line recipe panel can run much taller
+	# than a card). That stretch then cascades into deck_pile/discard_pile
+	# (also default FILL) growing to fill it, ballooning each PilePanel's
+	# background far past its fixed-size CardFace and making the two piles
+	# read as oversized/disproportionate next to their own card art. Shrink-
+	# centering here keeps both piles at their natural content height,
+	# vertically centered alongside whatever height the recipe column ends
+	# up needing.
+	piles_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(piles_row)
 
 	deck_pile = _build_pile("Deck")
-	piles_col.add_child(deck_pile)
+	piles_row.add_child(deck_pile)
 	_deck_count_label = deck_pile.get_meta("count_label")
 	var deck_card: CardFace = deck_pile.get_meta("card_face")
 	# set_face_down() touches @onready fields that only resolve once this
@@ -83,7 +74,7 @@ func _init() -> void:
 	deck_card.disabled = true
 
 	discard_pile = _build_pile("Discard")
-	piles_col.add_child(discard_pile)
+	piles_row.add_child(discard_pile)
 	_discard_count_label = discard_pile.get_meta("count_label")
 	_discard_card = discard_pile.get_meta("card_face")
 	_discard_card.set_face_down.call_deferred()
@@ -99,7 +90,7 @@ func _build_pile(title: String) -> PanelContainer:
 	panel.add_child(box)
 
 	var title_label := Label.new()
-	title_label.theme_type_variation = "SectionLabel"
+	title_label.theme_type_variation = "PileSectionLabel"
 	title_label.text = title
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title_label)
@@ -111,15 +102,12 @@ func _build_pile(title: String) -> PanelContainer:
 	panel.set_meta("card_face", card_face)
 
 	var count_label := Label.new()
-	count_label.theme_type_variation = "BadgeLabel"
+	count_label.theme_type_variation = "PileBadgeLabel"
 	count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(count_label)
 	panel.set_meta("count_label", count_label)
 
 	return panel
-
-func _sync_center_to_scroll(scroll: ScrollContainer, center: CenterContainer) -> void:
-	center.custom_minimum_size = scroll.size
 
 ## discard_top: {label, category_key} describing the discard pile's top
 ## card, or an empty Dictionary if the pile is empty. discard_takeable:

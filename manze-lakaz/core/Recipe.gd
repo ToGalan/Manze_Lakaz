@@ -18,12 +18,15 @@ func is_ingredient_slot_open(def_id: String) -> bool:
 func is_preparation_slot_open(def_id: String) -> bool:
 	return def.requires_preparation(def_id) and not filled_preparations.has(def_id)
 
-func attach_ingredient_to_slot(card: Card) -> void:
-	filled_ingredients[card.def_id] = card
+## slot_def_id: which required slot this card fills. Defaults to the card's
+## own def_id (true for every normal card); a joker card names a different,
+## specific def_id here since its own def_id is never itself a required slot.
+func attach_ingredient_to_slot(card: Card, slot_def_id: String = "") -> void:
+	filled_ingredients[slot_def_id if slot_def_id != "" else card.def_id] = card
 	_check_completion()
 
-func attach_preparation_to_slot(card: Card) -> void:
-	filled_preparations[card.def_id] = card
+func attach_preparation_to_slot(card: Card, slot_def_id: String = "") -> void:
+	filled_preparations[slot_def_id if slot_def_id != "" else card.def_id] = card
 	_check_completion()
 
 func attach_decoy(card: Card) -> void:
@@ -73,4 +76,17 @@ func remove_stealable_card(instance_id: int) -> Card:
 	for i in decoys.size():
 		if decoys[i].instance_id == instance_id:
 			return decoys.pop_at(i)
+	return null
+
+## Remove and return an attached preparation card by instance id, or null if
+## not found. Unlike remove_stealable_card, this has no completed-recipe
+## guard of its own -- callers (RulesEngine) are responsible for only ever
+## moving a preparation off a recipe that isn't completed, exactly as they
+## already restrict which recipes are stealable-from.
+func remove_preparation(instance_id: int) -> Card:
+	for def_id in filled_preparations.keys():
+		var c: Card = filled_preparations[def_id]
+		if c.instance_id == instance_id:
+			filled_preparations.erase(def_id)
+			return c
 	return null
