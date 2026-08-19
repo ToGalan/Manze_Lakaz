@@ -27,7 +27,13 @@ extends RefCounted
 
 const HIDDEN_RECIPE_TIER_KEYS := ["ingredient_ids", "preparation_ids"] # never present under "opponents"
 
-static func build_snapshot(state: GameState, viewer_index: int) -> Dictionary:
+## turn_timer_seconds is ServerAuthority's own config, not part of
+## GameConfig (hot-seat has no equivalent -- it's an online-only knob), so
+## it's threaded through as its own parameter rather than folded into
+## _serialize_config(). Purely informational for the client: lets it show
+## a countdown (see GameScreen._arm_network_turn_timer_display()), but the
+## server is the only thing that actually enforces it.
+static func build_snapshot(state: GameState, viewer_index: int, turn_timer_seconds: float = 0.0) -> Dictionary:
 	var view := PublicGameView.from_state(state, viewer_index)
 
 	var snapshot := {
@@ -44,6 +50,7 @@ static func build_snapshot(state: GameState, viewer_index: int) -> Dictionary:
 		"winner_player_index": state.winner_player_index,
 		"winner_team_id": state.winner_team_id,
 		"config": _serialize_config(state.config),
+		"turn_timer_seconds": turn_timer_seconds,
 		"own_hand": _serialize_cards(view.own_hand),
 		"own_recipes": _serialize_own_recipes(view.own_recipes),
 		"own_steals_used": view.own_steals_used,

@@ -272,7 +272,7 @@ func _send_snapshot_to_seat(seat: int) -> void:
 	var peer_id: int = seat_to_peer.get(seat, -1)
 	if peer_id == -1:
 		return # disconnected; they'll get a fresh snapshot on rejoin
-	var snapshot := NetworkStateFilter.build_snapshot(state, seat)
+	var snapshot := NetworkStateFilter.build_snapshot(state, seat, turn_timer_seconds)
 	peer_node.deliver_state_snapshot(peer_id, snapshot)
 
 func _send_seat_assigned(peer_id: int, seat: int, token: String) -> void:
