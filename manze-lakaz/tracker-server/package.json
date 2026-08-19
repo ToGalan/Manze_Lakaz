@@ -1,0 +1,17 @@
+{
+  "name": "manze-lakaz-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted WebTorrent tracker for Manze Lakaz's Tube-based WebRTC signaling. Not a Godot resource -- deployed separately as its own Node.js process.",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bittorrent-tracker": "^11.1.0"
+  }
+}
