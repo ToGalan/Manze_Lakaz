@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="TubeContext" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/tube/tube_context.gd" id="1_tubectx"]
+
+[resource]
+script = ExtResource("1_tubectx")
+app_id = "T8%,|,iO8CwfH}0"
+trackers_urls = Array[String](["wss://tracker.openwebtorrent.com", "wss://spacetradersapi-chatbox.herokuapp.com:443/announce", "wss://tracker.magnetoo.io"])
+stun_servers_urls = Array[String](["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478", "stun:stun.bethesda.net:3478", "stun:stun.relay.metered.ca:80"])
+turn_servers = Array[Dictionary]([{"urls": "turn:standard.relay.metered.ca:80", "username": "b5ddf4c3953eb08390613403", "credential": "rlIsGaFV+gTYJH9s"}, {"urls": "turn:standard.relay.metered.ca:443", "username": "b5ddf4c3953eb08390613403", "credential": "rlIsGaFV+gTYJH9s"}])
+peer_signaling_timeout = 4.0
+peer_signaling_max_attempts = 5

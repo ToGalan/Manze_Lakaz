@@ -1,6 +1,0 @@
-# Godot 4+ specific ignores
-.godot/
-/android/
-
-# Export output (built by build_web.ps1, not source)
-/build/

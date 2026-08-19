@@ -1,0 +1,11 @@
+{
+    "total": 30,
+    "cards": [
+        { "id": "simmering", "name": "Simmering", "copies": 6 },
+        { "id": "marinating", "name": "Marinating", "copies": 5 },
+        { "id": "grinding", "name": "Grinding", "copies": 5 },
+        { "id": "mixing", "name": "Mixing", "copies": 4 },
+        { "id": "frying", "name": "Frying", "copies": 5 },
+        { "id": "chopping", "name": "Chopping", "copies": 5 }
+    ]
+}

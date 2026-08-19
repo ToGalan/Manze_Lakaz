@@ -1,0 +1,412 @@
+{
+    "cards": [
+        {
+            "id": "ikan_bakar",
+            "name": "Ikan Bakar",
+            "country": "Indonesia",
+            "tier": "easy",
+            "ingredients": ["fish", "oil", "salt_pepper", "island_spice_blend", "lime", "chili"],
+            "preparations": ["marinating"],
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Whole fish (snapper or mackerel)", "quantity": "1, about 500g" },
+                    { "name": "Cooking oil", "quantity": "2 tbsp" },
+                    { "name": "Salt & pepper", "quantity": "to taste" },
+                    { "name": "Spice paste (turmeric, chili, garlic, ginger)", "quantity": "2 tbsp" },
+                    { "name": "Lime, juiced", "quantity": "2" },
+                    { "name": "Fresh red chili, sliced", "quantity": "2" }
+                ],
+                "prep_time_minutes": 30,
+                "cook_time_minutes": 20,
+                "steps": [
+                    "Clean the fish thoroughly and pat it dry, then score the skin diagonally a few times on each side so the marinade can penetrate and the skin crisps evenly.",
+                    "Blend the spice paste ingredients (turmeric, chili, garlic, ginger) into a smooth paste, adding a splash of oil if it needs loosening.",
+                    "Stir in half the lime juice and the sliced chili to brighten the paste before it goes on the fish.",
+                    "Rub the paste all over the fish, inside and out, working it into the scored cuts, then season generously with salt and pepper.",
+                    "Cover and let the fish marinate for at least 30 minutes at room temperature, or up to 2 hours in the fridge for deeper flavor.",
+                    "Preheat the grill to medium-high heat and oil the grates well so the skin doesn't stick and tear.",
+                    "Place the fish on the grill and cook for 6-8 minutes per side, basting with oil every couple of minutes.",
+                    "Turn carefully once the skin releases easily from the grates, the fish is done when the flesh flakes easily and the skin is charred in spots.",
+                    "Rest for a few minutes off the heat, then finish with the remaining lime juice and a scatter of fresh chili before serving."
+                ]
+            }
+        },
+        {
+            "id": "braai_steak",
+            "name": "Braai Steak",
+            "country": "South Africa",
+            "tier": "easy",
+            "ingredients": ["beef", "salt_pepper", "oil", "garlic", "onion", "fresh_herbs"],
+            "preparations": ["marinating"],
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Beef steaks", "quantity": "2, about 200g each" },
+                    { "name": "Salt & pepper", "quantity": "to taste" },
+                    { "name": "Cooking oil", "quantity": "2 tbsp" },
+                    { "name": "Garlic, minced", "quantity": "2 cloves" },
+                    { "name": "Onion, sliced into rings", "quantity": "1" },
+                    { "name": "Fresh rosemary or thyme", "quantity": "a few sprigs" }
+                ],
+                "prep_time_minutes": 60,
+                "cook_time_minutes": 15,
+                "steps": [
+                    "Bring the steaks to room temperature for about 20 minutes before cooking so they sear evenly.",
+                    "Mince the garlic and rub it all over both sides of the steaks along with a generous seasoning of salt and pepper.",
+                    "Tuck a few sprigs of rosemary or thyme against the meat, drizzle with oil, and work it in, then cover and marinate for at least an hour, longer develops more flavor.",
+                    "Light the braai and let the coals burn down until they're covered in white ash and radiating steady heat.",
+                    "Place the steaks over the hottest part of the fire and sear for 2-3 minutes per side without moving them, to build a good crust.",
+                    "Move to slightly cooler coals and continue grilling to your preferred doneness, turning once more.",
+                    "While the steaks rest, grill the onion rings over the coals for 3-4 minutes per side until softened and lightly charred.",
+                    "Use a meat thermometer or the touch test to check doneness, about 54C for medium-rare.",
+                    "Rest the steaks on a board for at least 5 minutes before slicing, then serve topped with the grilled onions and fresh herbs."
+                ]
+            }
+        },
+        {
+            "id": "akoho_sy_voanio",
+            "name": "Akoho sy Voanio",
+            "country": "Madagascar",
+            "tier": "easy",
+            "ingredients": ["chicken", "coconut_milk", "garlic", "onion", "fresh_herbs", "salt_pepper"],
+            "preparations": ["simmering"],
+            "uses_grill": false,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Chicken, cut into pieces", "quantity": "1 kg" },
+                    { "name": "Coconut milk", "quantity": "400 ml" },
+                    { "name": "Garlic, minced", "quantity": "3 cloves" },
+                    { "name": "Onion, sliced", "quantity": "1" },
+                    { "name": "Fresh thyme or curry leaves", "quantity": "a few sprigs" },
+                    { "name": "Salt & pepper", "quantity": "to taste" }
+                ],
+                "prep_time_minutes": 15,
+                "cook_time_minutes": 40,
+                "steps": [
+                    "Slice the onion and mince the garlic.",
+                    "Season the chicken pieces generously with salt and pepper on all sides.",
+                    "Heat oil in a heavy pot and saute the onion until soft, then add the garlic and cook until fragrant, about a minute.",
+                    "Add the chicken pieces and brown them lightly on all sides, about 5 minutes, this is about building flavor, not cooking through yet.",
+                    "Tuck the fresh thyme or curry leaves in among the chicken so their fragrance infuses as it cooks.",
+                    "Pour in the coconut milk, scraping up any browned bits from the bottom of the pot.",
+                    "Bring to a gentle simmer, then reduce the heat to low and cover.",
+                    "Simmer for 30-35 minutes, stirring occasionally, until the chicken is tender and cooked through.",
+                    "Uncover for the last 5-10 minutes if the sauce needs to thicken further, then taste and adjust the seasoning before serving."
+                ]
+            }
+        },
+        {
+            "id": "ayam_panggang",
+            "name": "Ayam Panggang",
+            "country": "Indonesia",
+            "tier": "easy",
+            "ingredients": ["chicken", "oil", "coconut_milk", "island_spice_blend", "lime", "salt_pepper"],
+            "preparations": ["mixing"],
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Chicken, cut into pieces", "quantity": "1 kg" },
+                    { "name": "Cooking oil", "quantity": "2 tbsp" },
+                    { "name": "Coconut milk", "quantity": "200 ml" },
+                    { "name": "Spice blend (galangal, turmeric, coriander)", "quantity": "3 tbsp" },
+                    { "name": "Lime, juiced", "quantity": "2" },
+                    { "name": "Salt & pepper", "quantity": "to taste" }
+                ],
+                "prep_time_minutes": 20,
+                "cook_time_minutes": 25,
+                "steps": [
+                    "Whisk the spice blend together with the coconut milk, oil, and half the lime juice until well combined into a fragrant marinade.",
+                    "Season the chicken pieces with salt and pepper, then add them to the marinade and turn to coat every surface evenly.",
+                    "Cover and let the chicken marinate for at least 20 minutes, or up to a few hours in the fridge for deeper flavor.",
+                    "Preheat the grill to medium heat, too hot and the coconut milk marinade will scorch before the chicken cooks through.",
+                    "Lift the chicken from the marinade, letting the excess drip off, and reserve the marinade for basting.",
+                    "Grill the chicken pieces, turning every few minutes and basting with the reserved marinade each time you flip.",
+                    "Continue grilling for about 20-25 minutes total, until the outside is golden and slightly charred.",
+                    "Check that the chicken is cooked through, juices run clear, no pink near the bone.",
+                    "Rest briefly, then squeeze the remaining lime juice over the top before serving hot."
+                ]
+            }
+        },
+        {
+            "id": "cari_cabri",
+            "name": "Cari Cabri",
+            "country": "Mauritius",
+            "tier": "medium",
+            "ingredients": ["goat", "island_spice_blend", "tomato", "garlic", "fresh_herbs", "oil", "onion", "salt_pepper"],
+            "preparations": ["frying", "simmering"],
+            "uses_grill": false,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Goat meat, bone-in chunks", "quantity": "800g" },
+                    { "name": "Curry spice blend", "quantity": "3 tbsp" },
+                    { "name": "Tomatoes, chopped", "quantity": "3" },
+                    { "name": "Garlic, minced", "quantity": "5 cloves" },
+                    { "name": "Fresh thyme or curry leaves", "quantity": "a few sprigs" },
+                    { "name": "Cooking oil", "quantity": "3 tbsp" },
+                    { "name": "Onion, chopped", "quantity": "1" },
+                    { "name": "Salt & pepper", "quantity": "to taste" }
+                ],
+                "prep_time_minutes": 20,
+                "cook_time_minutes": 90,
+                "steps": [
+                    "Pat the goat chunks dry and season generously with salt and pepper.",
+                    "Heat oil in a heavy pot and fry the curry spice blend and minced garlic together for about a minute, until fragrant.",
+                    "Add the chopped onion and cook until soft and translucent, about 5 minutes.",
+                    "Add the goat and brown it on all sides, turning occasionally, for about 8-10 minutes.",
+                    "Stir in the chopped tomatoes and cook for a few minutes until they start to soften and release their juices.",
+                    "Add enough water to just cover the meat, then bring to a boil.",
+                    "Reduce the heat to low, cover, and simmer gently for about 75-90 minutes, stirring occasionally.",
+                    "Add the fresh thyme or curry leaves partway through cooking so their flavor infuses the sauce.",
+                    "Check the goat for tenderness, it should pull apart easily with a fork, then uncover for the last 10-15 minutes to reduce and thicken the sauce before serving."
+                ]
+            }
+        },
+        {
+            "id": "yassa_poulet",
+            "name": "Yassa Poulet",
+            "country": "Senegal",
+            "tier": "medium",
+            "ingredients": ["chicken", "onion", "lime", "oil", "chili", "salt_pepper", "garlic", "fresh_herbs"],
+            "preparations": ["marinating", "frying"],
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Chicken pieces", "quantity": "1 kg" },
+                    { "name": "Onions, thinly sliced", "quantity": "4" },
+                    { "name": "Lime, juiced", "quantity": "3" },
+                    { "name": "Cooking oil", "quantity": "3 tbsp" },
+                    { "name": "Chili", "quantity": "2" },
+                    { "name": "Salt & pepper", "quantity": "to taste" },
+                    { "name": "Garlic, minced", "quantity": "3 cloves" },
+                    { "name": "Fresh parsley, chopped", "quantity": "a handful" }
+                ],
+                "prep_time_minutes": 120,
+                "cook_time_minutes": 30,
+                "steps": [
+                    "Combine the lime juice, sliced onions, oil, chili, minced garlic, salt, and pepper in a large bowl or bag.",
+                    "Add the chicken pieces and turn to coat thoroughly in the marinade.",
+                    "Cover and marinate in the fridge for at least 2 hours, turning occasionally, the lime juice does most of the flavor work here.",
+                    "Lift the chicken from the marinade, shaking off the excess, and set the marinated onions aside separately.",
+                    "Grill or pan-fry the chicken over medium-high heat until browned on all sides, about 10-12 minutes, it doesn't need to be fully cooked through yet.",
+                    "In a separate pan, fry the reserved onions over medium heat, stirring often, until soft and golden, about 15 minutes.",
+                    "Return the browned chicken to the pan with the onions and pour in the reserved marinade.",
+                    "Cover and simmer gently for 20-25 minutes, until the chicken is tender and cooked through and the onions have melted into a soft, tangy sauce.",
+                    "Taste and adjust the seasoning with more salt or lime juice, then scatter with chopped parsley before serving."
+                ]
+            }
+        },
+        {
+            "id": "jerk_chicken",
+            "name": "Jerk Chicken",
+            "country": "Jamaica",
+            "tier": "medium",
+            "ingredients": ["chicken", "island_spice_blend", "fresh_herbs", "oil", "lime", "chili", "garlic", "salt_pepper"],
+            "preparations": ["grinding", "mixing"],
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Chicken pieces", "quantity": "1.5 kg" },
+                    { "name": "Jerk spice blend (allspice, thyme, garlic)", "quantity": "3 tbsp" },
+                    { "name": "Fresh thyme", "quantity": "a few sprigs" },
+                    { "name": "Cooking oil", "quantity": "2 tbsp" },
+                    { "name": "Lime, juiced", "quantity": "2" },
+                    { "name": "Scotch bonnet chili", "quantity": "2" },
+                    { "name": "Garlic, minced", "quantity": "4 cloves" },
+                    { "name": "Salt & pepper", "quantity": "to taste" }
+                ],
+                "prep_time_minutes": 60,
+                "cook_time_minutes": 35,
+                "steps": [
+                    "Combine the jerk spice blend, scotch bonnet chili, minced garlic, and fresh thyme in a mortar or food processor and grind into a coarse, fragrant paste.",
+                    "Stir the lime juice and oil into the paste until it forms a thick, spreadable marinade, then season it with salt and pepper.",
+                    "Score the chicken pieces lightly and rub the marinade all over, working it under the skin where you can for maximum flavor.",
+                    "Cover and marinate in the fridge for at least an hour, overnight develops the best, deepest flavor.",
+                    "Bring the chicken to room temperature for 20-30 minutes before grilling.",
+                    "Preheat the grill to medium heat and set it up for indirect cooking if possible, since jerk chicken benefits from a slower cook.",
+                    "Grill the chicken, turning often to keep the sugars in the marinade from burning, for about 30-35 minutes total.",
+                    "In the final few minutes, move the chicken over direct heat briefly to build a deep char on the skin.",
+                    "Check that the chicken is cooked through before serving hot, ideally with extra lime wedges on the side."
+                ]
+            }
+        },
+        {
+            "id": "rougay_pwason",
+            "name": "Rougay Pwason",
+            "country": "Mauritius",
+            "tier": "medium",
+            "ingredients": ["fish", "tomato", "onion", "chili", "garlic", "oil", "salt_pepper", "island_spice_blend"],
+            "preparations": ["chopping", "simmering"],
+            "uses_grill": false,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Fish steaks or fillets", "quantity": "500g" },
+                    { "name": "Tomatoes, chopped", "quantity": "4" },
+                    { "name": "Onion, chopped", "quantity": "1" },
+                    { "name": "Chili, sliced", "quantity": "2" },
+                    { "name": "Garlic, minced", "quantity": "3 cloves" },
+                    { "name": "Cooking oil", "quantity": "2 tbsp" },
+                    { "name": "Salt & pepper", "quantity": "to taste" },
+                    { "name": "Spice blend (turmeric, thyme)", "quantity": "1 tbsp" }
+                ],
+                "prep_time_minutes": 20,
+                "cook_time_minutes": 30,
+                "steps": [
+                    "Chop the tomatoes, onion, and chili finely, and mince the garlic, keeping them separate for now.",
+                    "Season the fish lightly with salt and pat it dry so it sears rather than steams.",
+                    "Heat oil in a wide pan and sear the fish pieces briefly on each side just to color the outside, then set aside.",
+                    "In the same pan, saute the onion until soft and translucent, then add the garlic and cook until fragrant.",
+                    "Stir in the spice blend and cook for about 30 seconds until fragrant, then add the tomatoes and chili.",
+                    "Cook the tomatoes down, stirring occasionally, until they break apart into a thick sauce.",
+                    "Season the sauce with salt and a splash of water if it looks too thick, then let it simmer for a few minutes to meld the flavors.",
+                    "Nestle the seared fish back into the sauce, spooning some sauce over the top.",
+                    "Cover and simmer gently for 8-10 minutes, until the fish is opaque and flakes easily and the sauce has thickened to your liking."
+                ]
+            }
+        },
+        {
+            "id": "awaze_tibs",
+            "name": "Awaze Tibs",
+            "country": "Ethiopia",
+            "tier": "hard",
+            "ingredients": ["beef", "onion", "garlic", "chili", "tomato", "fresh_herbs", "lime", "oil", "salt_pepper", "island_spice_blend"],
+            "preparations": ["grinding", "chopping", "frying"],
+            "uses_grill": false,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Beef, cubed", "quantity": "700g" },
+                    { "name": "Onion, sliced", "quantity": "1" },
+                    { "name": "Garlic, minced", "quantity": "4 cloves" },
+                    { "name": "Fresh chili (or berbere paste)", "quantity": "3 tbsp" },
+                    { "name": "Tomatoes, chopped", "quantity": "2" },
+                    { "name": "Fresh rosemary", "quantity": "a few sprigs" },
+                    { "name": "Lime, juiced", "quantity": "1" },
+                    { "name": "Cooking oil", "quantity": "3 tbsp" },
+                    { "name": "Salt & pepper", "quantity": "to taste" },
+                    { "name": "Berbere spice blend", "quantity": "2 tbsp" }
+                ],
+                "prep_time_minutes": 30,
+                "cook_time_minutes": 25,
+                "steps": [
+                    "Grind the berbere spice blend together with the chili, garlic, and a splash of oil into a thick, fragrant awaze paste.",
+                    "Season the beef cubes with salt and pepper.",
+                    "Chop the onion, tomatoes, and rosemary, keeping them ready near the stove.",
+                    "Heat the remaining oil in a wide pan or skillet over high heat until it's just starting to smoke.",
+                    "Sear the beef cubes in batches, turning occasionally, until well browned on all sides but still rare in the center, about 4-5 minutes per batch.",
+                    "Push the beef to one side, add the onion to the pan, and fry until it softens and picks up the browned bits, about 3-4 minutes.",
+                    "Stir in the awaze paste and tomatoes, tossing everything together until the beef is evenly coated and glossy.",
+                    "Cook for a final 2-3 minutes so the sauce clings and thickens slightly without overcooking the beef.",
+                    "Finish with the lime juice and rosemary, tossing once more, then serve hot straight from the pan."
+                ]
+            }
+        },
+        {
+            "id": "yebeg_alicha_wot",
+            "name": "Yebeg Alicha Wot",
+            "country": "Ethiopia",
+            "tier": "hard",
+            "ingredients": ["lamb", "onion", "garlic", "fresh_herbs", "tomato", "lime", "oil", "salt_pepper", "island_spice_blend", "coconut_milk"],
+            "preparations": ["chopping", "simmering"],
+            "uses_grill": false,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Lamb, bone-in chunks", "quantity": "800g" },
+                    { "name": "Onions, finely chopped", "quantity": "3" },
+                    { "name": "Garlic, minced", "quantity": "4 cloves" },
+                    { "name": "Fresh rosemary or thyme", "quantity": "a few sprigs" },
+                    { "name": "Tomatoes, chopped", "quantity": "2" },
+                    { "name": "Lime, juiced", "quantity": "1" },
+                    { "name": "Cooking oil or butter", "quantity": "3 tbsp" },
+                    { "name": "Salt & pepper", "quantity": "to taste" },
+                    { "name": "Mild spice blend (turmeric, ginger)", "quantity": "2 tbsp" },
+                    { "name": "Coconut milk", "quantity": "200 ml" }
+                ],
+                "prep_time_minutes": 25,
+                "cook_time_minutes": 75,
+                "steps": [
+                    "Finely chop the onions, mince the garlic, and chop the tomatoes.",
+                    "Pat the lamb dry and season generously with salt and pepper.",
+                    "Heat the oil (or butter) in a heavy pot and cook the onions over medium-low heat until soft and translucent, about 10 minutes, take it slow, alicha wot is a mild, gently built stew.",
+                    "Add the garlic and mild spice blend and cook for another minute until fragrant, being careful not to let it brown or turn bitter.",
+                    "Add the lamb and turn it in the spiced onions until lightly coated, about 3-4 minutes, no need for a deep sear here.",
+                    "Stir in the tomatoes and cook for a few minutes until they soften and begin to break down.",
+                    "Pour in the coconut milk and enough water to almost cover the lamb, then bring to a gentle simmer.",
+                    "Cover and simmer on low for 60-70 minutes, stirring occasionally, until the lamb is fork-tender.",
+                    "Uncover, add the fresh rosemary and lime juice, and simmer a final 5 minutes to let the sauce settle before serving."
+                ]
+            }
+        },
+        {
+            "id": "zilzil_tibs",
+            "name": "ZilZil Tibs",
+            "country": "Ethiopia",
+            "tier": "hard",
+            "ingredients": ["beef", "onion", "garlic", "chili", "tomato", "fresh_herbs", "lime", "oil", "salt_pepper", "island_spice_blend"],
+            "preparations": ["chopping", "frying"],
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Beef, cut into thin strips", "quantity": "700g" },
+                    { "name": "Onion, sliced into strips", "quantity": "1" },
+                    { "name": "Garlic, minced", "quantity": "4 cloves" },
+                    { "name": "Fresh chili, sliced into strips", "quantity": "2" },
+                    { "name": "Tomatoes, sliced into wedges", "quantity": "2" },
+                    { "name": "Fresh rosemary", "quantity": "a few sprigs" },
+                    { "name": "Lime, juiced", "quantity": "1" },
+                    { "name": "Cooking oil", "quantity": "3 tbsp" },
+                    { "name": "Salt & pepper", "quantity": "to taste" },
+                    { "name": "Berbere spice blend", "quantity": "1 tbsp" }
+                ],
+                "prep_time_minutes": 20,
+                "cook_time_minutes": 15,
+                "steps": [
+                    "Slice the beef into thin strips against the grain so they stay tender when seared quickly.",
+                    "Slice the onion, chili, and tomatoes into matching strips and wedges, and mince the garlic.",
+                    "Season the beef strips with salt, pepper, and the berbere spice blend.",
+                    "Heat the oil in a heavy skillet or on a hot grill plate until very hot.",
+                    "Sear the beef strips in a single layer, in batches if needed, for about 1-2 minutes per side, zilzil tibs is meant to be quick and hot, not slow-cooked.",
+                    "Remove the beef and set aside, then add the onion and garlic to the same pan and fry for 2-3 minutes until just softened.",
+                    "Add the chili and tomatoes and cook for another minute, tossing to pick up the fond left by the beef.",
+                    "Return the beef to the pan along with the rosemary, tossing everything together over high heat for a final minute.",
+                    "Finish with a squeeze of lime juice and serve immediately while sizzling hot."
+                ]
+            }
+        },
+        {
+            "id": "bone_in_pork_chops",
+            "name": "Bone-In Pork Chops",
+            "country": "Jamaica",
+            "tier": "hard",
+            "ingredients": ["pork", "garlic", "onion", "oil", "salt_pepper", "island_spice_blend", "lime", "chili", "tomato", "fresh_herbs"],
+            "preparations": ["marinating", "grinding"],
+            "uses_grill": true,
+            "real_recipe": {
+                "ingredients": [
+                    { "name": "Bone-in pork chops", "quantity": "4, about 250g each" },
+                    { "name": "Garlic, minced", "quantity": "4 cloves" },
+                    { "name": "Onion, sliced", "quantity": "1" },
+                    { "name": "Cooking oil", "quantity": "3 tbsp" },
+                    { "name": "Salt & pepper", "quantity": "to taste" },
+                    { "name": "Jerk spice blend (allspice, thyme, garlic)", "quantity": "3 tbsp" },
+                    { "name": "Lime, juiced", "quantity": "2" },
+                    { "name": "Scotch bonnet chili", "quantity": "1" },
+                    { "name": "Tomatoes, chopped", "quantity": "2" },
+                    { "name": "Fresh thyme", "quantity": "a few sprigs" }
+                ],
+                "prep_time_minutes": 90,
+                "cook_time_minutes": 20,
+                "steps": [
+                    "Grind the jerk spice blend together with the garlic, chili, and thyme into a coarse, oily paste.",
+                    "Pat the pork chops dry, season with salt and pepper, then rub the spice paste all over, working it into the bone pockets.",
+                    "Stir the lime juice into any remaining paste and drizzle it over the chops.",
+                    "Cover and marinate in the fridge for at least 1-2 hours, or overnight for the best flavor.",
+                    "Bring the chops to room temperature for 20 minutes before grilling.",
+                    "Preheat the grill to medium-high heat and oil the grates well.",
+                    "Grill the chops for 5-6 minutes per side, until well charred and an internal temperature of about 63C near the bone.",
+                    "While the chops rest, quickly toss the sliced onion and chopped tomatoes on the grill or in a hot pan for 2-3 minutes to soften into a warm relish.",
+                    "Rest the chops for 5 minutes, then serve topped with the onion-tomato relish and a final squeeze of lime."
+                ]
+            }
+        }
+    ]
+}

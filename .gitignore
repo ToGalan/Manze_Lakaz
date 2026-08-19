@@ -1,0 +1,21 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Export output (built by build_web.ps1, not source)
+/build/
+
+# Windows Desktop export output (regenerate via the "Windows Desktop"
+# export preset -- not source, same reasoning as /build/ above)
+/Manze Lakaz.exe
+/Manze Lakaz.console.exe
+/libwebrtc_native.*.dll
+
+# Transient lock files some antivirus "web shield" scanners leave behind
+# next to a DLL while it's being scanned -- not real project files.
+addons/webrtc_native/lib/~*
+
+# Claude Code's own per-machine tool-permission history -- personal/local
+# by Claude Code's own naming convention, not meant to be shared.
+.claude/settings.local.json
+

@@ -1,0 +1,24 @@
+{
+    "total": 94,
+    "cards": [
+        { "id": "oil", "name": "Oil", "copies": 9, "type": "pantry" },
+        { "id": "island_spice_blend", "name": "Island Spice Blend", "copies": 8, "type": "pantry" },
+        { "id": "garlic", "name": "Garlic", "copies": 8, "type": "vegetable" },
+        { "id": "onion", "name": "Onion", "copies": 7, "type": "vegetable" },
+        { "id": "salt_pepper", "name": "Salt & Pepper", "copies": 7, "type": "pantry" },
+        { "id": "chicken", "name": "Chicken", "copies": 5, "type": "protein" },
+        { "id": "chili", "name": "Chili", "copies": 6, "type": "vegetable" },
+        { "id": "tomato", "name": "Tomato", "copies": 6, "type": "vegetable" },
+        { "id": "fresh_herbs", "name": "Fresh Herbs", "copies": 6, "type": "vegetable" },
+        { "id": "coconut_milk", "name": "Coconut Milk", "copies": 4, "type": "pantry" },
+        { "id": "fish", "name": "Fish", "copies": 4, "type": "protein" },
+        { "id": "lime", "name": "Lime", "copies": 5, "type": "vegetable" },
+        { "id": "beef", "name": "Beef", "copies": 4, "type": "protein" },
+        { "id": "goat", "name": "Goat", "copies": 3, "type": "protein" },
+        { "id": "pork", "name": "Pork", "copies": 3, "type": "protein" },
+        { "id": "lamb", "name": "Lamb", "copies": 3, "type": "protein" },
+        { "id": "joker_protein", "name": "Protein Joker", "copies": 2, "type": "protein", "joker": true },
+        { "id": "joker_vegetable", "name": "Vegetable Joker", "copies": 2, "type": "vegetable", "joker": true },
+        { "id": "joker_pantry", "name": "Pantry Joker", "copies": 2, "type": "pantry", "joker": true }
+    ]
+}
