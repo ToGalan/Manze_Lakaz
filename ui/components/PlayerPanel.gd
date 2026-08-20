@@ -24,10 +24,9 @@ const STEAL_ICON_SPACING := 14.0
 ## growing one unbroken HBoxContainer row wider and wider -- wide enough to
 ## break top_bar's layout. Above this many cards a row switches to pages
 ## of this size instead, with Prev/Next controls; at or below it, nothing
-## changes (a single page, no controls shown). Lowered from 9: a single
-## unbroken row of 8 was already wide enough to break the layout, so
-## pagination now has to kick in one card sooner.
-const CARDS_PER_PAGE := 7
+## changes (a single page, no controls shown). Pagination should only
+## kick in once a 9th card actually lands -- 8 fit fine on one page.
+const CARDS_PER_PAGE := 8
 
 const AVATAR_COLORS := [
 	Color8(224, 122, 95), Color8(129, 178, 154), Color8(230, 183, 88), Color8(129, 161, 193),
@@ -195,9 +194,9 @@ func _build_page_nav(recipe_index: int, page: int, total_pages: int) -> void:
 	_chips_col.add_child(nav_row)
 
 	var prev_btn := Button.new()
-	prev_btn.theme_type_variation = "SecondaryButton"
+	prev_btn.theme_type_variation = "PageNavButton"
 	prev_btn.text = "<"
-	prev_btn.custom_minimum_size = Vector2(24, 0)
+	prev_btn.custom_minimum_size = Vector2(18, 0)
 	prev_btn.disabled = page == 0
 	prev_btn.pressed.connect(_on_page_nav_pressed.bind(recipe_index, page - 1))
 	nav_row.add_child(prev_btn)
@@ -209,9 +208,9 @@ func _build_page_nav(recipe_index: int, page: int, total_pages: int) -> void:
 	nav_row.add_child(page_label)
 
 	var next_btn := Button.new()
-	next_btn.theme_type_variation = "SecondaryButton"
+	next_btn.theme_type_variation = "PageNavButton"
 	next_btn.text = ">"
-	next_btn.custom_minimum_size = Vector2(24, 0)
+	next_btn.custom_minimum_size = Vector2(18, 0)
 	next_btn.disabled = page == total_pages - 1
 	next_btn.pressed.connect(_on_page_nav_pressed.bind(recipe_index, page + 1))
 	nav_row.add_child(next_btn)

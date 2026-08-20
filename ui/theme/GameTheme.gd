@@ -136,6 +136,9 @@ static func _setup_buttons(t: Theme) -> void:
 	_button_variation(t, "PrimaryButton", COLOR_ACCENT, Color8(30, 24, 10), COLOR_ACCENT_DIM, 18)
 	_button_variation(t, "SecondaryButton", COLOR_PANEL_LIGHT, COLOR_TEXT, COLOR_PANEL_BORDER, 15)
 	_button_variation(t, "PrimaryButtonCompact", COLOR_ACCENT, Color8(30, 24, 10), COLOR_ACCENT_DIM, 18, 4)
+	## The opponent-recipe-row Prev/Next pagination controls (PlayerPanel) --
+	## small enough not to compete with the mini card row they sit under.
+	_button_variation(t, "PageNavButton", COLOR_PANEL_LIGHT, COLOR_TEXT, COLOR_PANEL_BORDER, 11, 2)
 
 	_card_face_variation(t, "CardFaceProtein", COLOR_PROTEIN)
 	_card_face_variation(t, "CardFaceVegetable", COLOR_VEGETABLE)

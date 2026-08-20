@@ -129,21 +129,24 @@ var turn_timer_label: Label
 ## actions (hot-seat covers both players since they share one device;
 ## online only plays for the acting client, not for opponents watching a
 ## snapshot arrive -- there's no typed "an action just happened" signal
-## broadcast to observers to hook, only the log line's text). DRAFT_KEEP is
-## deliberately absent -- see DRAFT_KEEP_SFX below, which plays once for
-## the whole draft instead of once per pick.
+## broadcast to observers to hook, only the log line's text). DRAFT_KEEP and
+## DRAW are deliberately absent -- see DRAFT_KEEP_SFX/DRAW_SFX below, each
+## capped to its own short max playback length.
 const ACTION_SFX := {
-	Action.Type.DRAW: preload("res://sfx/423769__someonecool15__playing-cards-being-delt.mp3"),
 	Action.Type.STEAL: preload("res://sfx/448995__qubodup__yoink-stealing-sound-effect.wav"), # Godot can't import the source .flac directly; converted to .wav once, see the file alongside it
 	Action.Type.ATTACH: preload("res://sfx/740218__simeonradivoev__sci-fi-robotic-attachment.mp3"),
 	Action.Type.DISCARD: preload("res://sfx/zapsplat_leisure_trading_or_playing_card_shuffle_002_77303.mp3"),
 	Action.Type.TAKE_DISCARD: preload("res://sfx/zapsplat_leisure_trading_card_or_playing_card_shuffle_turn_over_single_001_68322.mp3"),
 }
 
+const DRAW_SFX := preload("res://sfx/423769__someonecool15__playing-cards-being-delt.mp3")
+const DRAW_SFX_MAX_SECONDS := 2.0
+
 ## A single "shuffling the deck" cue for the whole draft, not one per pick
 ## (recipes_per_player picks, times every player) -- played on the first
 ## DRAFT_KEEP of a new game only.
 const DRAFT_KEEP_SFX := preload("res://sfx/zapsplat_leisure_playing_cards_flick_through_shuffle_007_62510.mp3")
+const DRAFT_KEEP_SFX_MAX_SECONDS := 4.0
 var _draft_keep_sfx_played: bool = false
 
 ## "Dealing everyone their recipe offers" -- played once when the draft
@@ -151,15 +154,9 @@ var _draft_keep_sfx_played: bool = false
 ## MOVE_PREPARATION at all despite the clip's filename.
 const DRAFT_BEGIN_SFX := preload("res://sfx/747805__hope_sounds_3__countingplayingcards.wav")
 var _draft_begin_sfx_played: bool = false
-## Only the last TURN_TIMER_WARNING_SECONDS of this clip are ever heard --
-## see the countdown-crossing check in _process() -- so it plays as a
-## ticking/ringing alarm that builds tension right up to 0, rather than the
-## whole ~87s file dumped out in full the moment a turn actually expires.
-const TURN_TIMER_WARNING_SFX := preload("res://sfx/47838__delphidebrain__delphis-double-egg-timer.wav")
-const TURN_TIMER_WARNING_SECONDS := 10.0
-var _timer_warning_played: bool = false
-var timer_warning_player: AudioStreamPlayer
+
 var sfx_player: AudioStreamPlayer
+var _sfx_play_token: int = 0 # invalidates a pending max-duration auto-stop once a different sound has since started (see _play_sfx())
 
 ## Played once from _on_start_pressed() (hot-seat) or the first snapshot a
 ## network client ever receives (see _advance_ui_after_state_change()) --
@@ -247,11 +244,6 @@ func _process(_delta: float) -> void:
 	turn_timer_badge.visible = true
 	turn_timer_label.text = "Turn ends in %d:%02d" % [remaining_seconds / 60, remaining_seconds % 60]
 
-	if not _timer_warning_played and remaining_ms <= int(TURN_TIMER_WARNING_SECONDS * 1000.0):
-		_timer_warning_played = true
-		timer_warning_player.stream = TURN_TIMER_WARNING_SFX
-		timer_warning_player.play(maxf(0.0, TURN_TIMER_WARNING_SFX.get_length() - TURN_TIMER_WARNING_SECONDS))
-
 # ===========================================================================
 # Static UI construction (built once)
 # ===========================================================================
@@ -267,10 +259,6 @@ func _build_static_ui() -> void:
 	sfx_player = AudioStreamPlayer.new()
 	sfx_player.bus = "SFX"
 	add_child(sfx_player)
-
-	timer_warning_player = AudioStreamPlayer.new()
-	timer_warning_player.bus = "SFX"
-	add_child(timer_warning_player)
 
 	var music_stream: AudioStreamWAV = MUSIC_STREAM
 	music_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
@@ -557,12 +545,15 @@ func _on_session_state_changed() -> void:
 	_advance_ui_after_state_change()
 
 func _submit_action(action: Action) -> void:
-	if action.type == Action.Type.DRAFT_KEEP:
-		if not _draft_keep_sfx_played:
-			_draft_keep_sfx_played = true
-			_play_sfx(DRAFT_KEEP_SFX)
-	else:
-		_play_sfx(ACTION_SFX.get(action.type))
+	match action.type:
+		Action.Type.DRAFT_KEEP:
+			if not _draft_keep_sfx_played:
+				_draft_keep_sfx_played = true
+				_play_sfx(DRAFT_KEEP_SFX, DRAFT_KEEP_SFX_MAX_SECONDS)
+		Action.Type.DRAW:
+			_play_sfx(DRAW_SFX, DRAW_SFX_MAX_SECONDS)
+		_:
+			_play_sfx(ACTION_SFX.get(action.type))
 	session.submit_action(action)
 
 ## Skips a retrigger while the exact same clip is still playing, so a rapid
@@ -570,13 +561,26 @@ func _submit_action(action: Action) -> void:
 ## server's confirming snapshot disables the button) can't sound like it
 ## fired twice. A genuinely different cue interrupts and plays immediately,
 ## same as before.
-func _play_sfx(stream: AudioStream) -> void:
+##
+## max_seconds, if given, cuts the clip short instead of letting it play to
+## its natural end -- e.g. a shuffle/deal sound that's really just meant as
+## a quick flourish, not the whole source file. Guarded by _sfx_play_token
+## so a later, different sound (already playing by the time this timer
+## fires) never gets stopped by a stale cutoff meant for the earlier one.
+func _play_sfx(stream: AudioStream, max_seconds: float = 0.0) -> void:
 	if stream == null:
 		return
 	if sfx_player.playing and sfx_player.stream == stream:
 		return
 	sfx_player.stream = stream
 	sfx_player.play()
+	_sfx_play_token += 1
+	if max_seconds > 0.0:
+		var token := _sfx_play_token
+		get_tree().create_timer(max_seconds).timeout.connect(func():
+			if _sfx_play_token == token:
+				sfx_player.stop()
+		)
 
 func _viewer_index() -> int:
 	return session.viewer_index()
@@ -1864,8 +1868,6 @@ func _advance_ui_after_state_change() -> void:
 func _invalidate_hotseat_turn_timer() -> void:
 	_hotseat_turn_timer_token += 1
 	_turn_timer_deadline_msec = -1
-	_timer_warning_played = false
-	timer_warning_player.stop()
 
 ## Starts (or restarts) the countdown for whoever can currently act. Called
 ## from two distinct places, both meaning "a human's turn just became
