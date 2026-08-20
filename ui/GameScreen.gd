@@ -97,12 +97,14 @@ var hotseat_turn_timer_enabled: bool = true
 var hotseat_turn_timer_seconds: float = 60.0
 var _hotseat_turn_timer_token: int = 0
 ## Wall-clock deadline (Time.get_ticks_msec()) for the countdown shown by
-## turn_timer_badge, or -1 while no countdown is running. Tracked
-## separately from the SceneTreeTimer that actually fires the timeout --
-## that one is fire-and-forget by design (see _arm_hotseat_turn_timer()) so
-## this is the only thing _process() needs to read to keep the on-screen
-## number honest.
-var _hotseat_turn_timer_deadline_msec: int = -1
+## turn_timer_badge, or -1 while no countdown is running. Shared between
+## hot-seat and network mode -- hot-seat also schedules a real
+## SceneTreeTimer alongside it to actually act on timeout (see
+## _arm_hotseat_turn_timer()), but network mode only ever sets this for
+## display: the server (ServerAuthority) already owns the real timer and
+## its auto-play fallback there, so the client has nothing to schedule,
+## just a number to show (see _arm_network_turn_timer_display()).
+var _turn_timer_deadline_msec: int = -1
 
 # Online setup + lobby.
 var _pending_is_host: bool = true
@@ -181,14 +183,14 @@ func _ready() -> void:
 
 ## Ticks the bottom-right countdown badge. Purely display -- the actual
 ## timeout is still owned by the SceneTreeTimer set up in
-## _arm_hotseat_turn_timer(); this just reads the same deadline every frame
-## so the number on screen stays honest without re-deriving anything about
-## whose turn it is.
+## _arm_hotseat_turn_timer() (hot-seat) or ServerAuthority (network); this
+## just reads the same deadline every frame so the number on screen stays
+## honest without re-deriving anything about whose turn it is.
 func _process(_delta: float) -> void:
-	if _hotseat_turn_timer_deadline_msec < 0:
+	if _turn_timer_deadline_msec < 0:
 		turn_timer_badge.visible = false
 		return
-	var remaining_ms: int = _hotseat_turn_timer_deadline_msec - Time.get_ticks_msec()
+	var remaining_ms: int = _turn_timer_deadline_msec - Time.get_ticks_msec()
 	var remaining_seconds: int = maxi(0, ceili(remaining_ms / 1000.0))
 	turn_timer_badge.visible = true
 	turn_timer_label.text = "Turn ends in %d:%02d" % [remaining_seconds / 60, remaining_seconds % 60]
@@ -303,7 +305,7 @@ func _build_static_ui() -> void:
 	add_child(leave_game_button)
 
 	# Persistent, bottom-right; visibility and text are driven every frame
-	# in _process() from _hotseat_turn_timer_deadline_msec rather than the
+	# in _process() from _turn_timer_deadline_msec rather than the
 	# per-screen _show_*() choke point leave_game_button uses -- a
 	# countdown needs to keep ticking every frame while its screen is up,
 	# not just refresh once when that screen is entered.
@@ -1692,11 +1694,11 @@ func _try_reconnect_once(session_id: String, token: String) -> bool:
 func _advance_ui_after_state_change() -> void:
 	state = session.get_state()
 	# Invalidates any turn timer armed for a previous call to this function
-	# (a stale one's captured token can no longer match) -- only the one
-	# branch below that actually shows the local human's own turn re-arms
-	# a fresh one, so every other outcome (pass-device, AI turn, draft for
-	# someone else, game over, ...) implicitly cancels it just by getting
-	# here.
+	# (a stale one's captured token can no longer match) -- only the two
+	# branches below that actually show the local human's own turn (one
+	# hot-seat, one network) re-arm a fresh one, so every other outcome
+	# (pass-device, AI turn, someone else's turn, game over, ...)
+	# implicitly cancels it just by getting here.
 	_invalidate_hotseat_turn_timer()
 	if state == null:
 		return
@@ -1717,6 +1719,8 @@ func _advance_ui_after_state_change() -> void:
 		# No pass-device gate online: this device only ever shows its OWN
 		# assigned seat's board (see ShadowStateBuilder/NetworkStateFilter),
 		# so there is nothing to hide from "whoever's holding the device".
+		if state.current_player_index == _viewer_index():
+			_arm_network_turn_timer_display()
 		if state.phase == GameState.Phase.DRAFT:
 			_show_draft()
 		else:
@@ -1742,9 +1746,13 @@ func _advance_ui_after_state_change() -> void:
 	else:
 		_show_play()
 
+## Also doubles as the reset point for network mode's display-only
+## countdown (see _arm_network_turn_timer_display()) -- every caller here
+## means "state just changed, whatever countdown was showing is stale",
+## regardless of which mode set it.
 func _invalidate_hotseat_turn_timer() -> void:
 	_hotseat_turn_timer_token += 1
-	_hotseat_turn_timer_deadline_msec = -1
+	_turn_timer_deadline_msec = -1
 
 ## Starts (or restarts) the countdown for whoever can currently act. Called
 ## from two distinct places, both meaning "a human's turn just became
@@ -1759,8 +1767,22 @@ func _arm_hotseat_turn_timer() -> void:
 	if not hotseat_turn_timer_enabled:
 		return
 	var armed_token := _hotseat_turn_timer_token
-	_hotseat_turn_timer_deadline_msec = Time.get_ticks_msec() + int(hotseat_turn_timer_seconds * 1000.0)
+	_turn_timer_deadline_msec = Time.get_ticks_msec() + int(hotseat_turn_timer_seconds * 1000.0)
 	get_tree().create_timer(hotseat_turn_timer_seconds).timeout.connect(_on_hotseat_turn_timer_expired.bind(armed_token))
+
+## Purely a visual countdown for online play -- the server (ServerAuthority)
+## owns the real turn timer and its auto-play fallback there, so unlike
+## _arm_hotseat_turn_timer() this schedules nothing: it only sets the same
+## deadline turn_timer_badge already knows how to display. "Turn start" is
+## approximated as "this snapshot just arrived", since the server doesn't
+## broadcast an exact deadline, only the configured duration -- close
+## enough for a non-authoritative aid, and the server's own timer is what
+## actually decides when a turn times out regardless of what this shows.
+func _arm_network_turn_timer_display() -> void:
+	var seconds: float = (session as NetworkSession).latest_snapshot.get("turn_timer_seconds", 0.0)
+	if seconds <= 0.0:
+		return
+	_turn_timer_deadline_msec = Time.get_ticks_msec() + int(seconds * 1000.0)
 
 ## If the local human at the controls doesn't act before hotseat_turn_timer_seconds
 ## elapses, a fallback bot plays out the REST of their turn -- not just one
@@ -1779,19 +1801,32 @@ func _on_hotseat_turn_timer_expired(fired_token: int) -> void:
 		return
 
 	var stalled_player := state.current_player_index
-	# The draft is turn-based per player too, but _advance_draft() can land
-	# the LAST drafter's index back on player 0 the moment the draft
-	# finishes -- if the stalled player happened to be player 0, a bare
-	# current_player_index check would wrongly treat their brand new TAKE
-	# turn as "still the same stalled draft turn" and keep auto-playing
-	# past it. Stopping at the DRAFT->TAKE phase boundary too closes that
-	# gap without otherwise touching the normal TAKE/PLAY/HAND_LIMIT loop,
-	# which is one continuous turn for the same player by design.
-	var stalled_in_draft := state.phase == GameState.Phase.DRAFT
 	selected_card_id = -1
 	selected_move_prep_id = -1
 	_pending_joker_choices = []
 
+	# TAKE/PLAY: skip the turn outright, no bot plays on the stalled
+	# player's behalf -- see RulesEngine.skip_turn() for why (a fallback
+	# bot choosing to steal or attach for a player who never actually
+	# chose to was the exact bug this replaced, same as ServerAuthority's
+	# equivalent online).
+	if state.phase == GameState.Phase.TAKE or state.phase == GameState.Phase.PLAY:
+		RulesEngine.skip_turn(state)
+		_append_log_line("(Turn timer expired) Player %d's turn was skipped" % (stalled_player + 1))
+		session.state_changed.emit()
+		return
+
+	# DRAFT/HAND_LIMIT can't be skipped -- every player must resolve these
+	# regardless of presence, so fall back to auto-play exactly as before,
+	# looping until this player's turn (potentially several picks/discards)
+	# actually finishes. The draft is turn-based per player too, but
+	# _advance_draft() can land the LAST drafter's index back on player 0
+	# the moment the draft finishes -- if the stalled player happened to be
+	# player 0, a bare current_player_index check would wrongly treat
+	# their brand new TAKE turn as "still the same stalled draft turn" and
+	# keep auto-playing past it. Stopping at the DRAFT->TAKE phase
+	# boundary closes that gap.
+	var stalled_in_draft := state.phase == GameState.Phase.DRAFT
 	var steps := 0
 	while steps < 20 and not state.game_over and state.current_player_index == stalled_player \
 			and (not stalled_in_draft or state.phase == GameState.Phase.DRAFT):

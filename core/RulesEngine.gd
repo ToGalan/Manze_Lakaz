@@ -339,6 +339,43 @@ static func _handle_recipe_completed(state: GameState, player: Player, recipe: R
 	state.phase = GameState.Phase.GAME_OVER
 
 # ===========================================================================
+# Timeout fallback: skipping a stalled turn without acting on it
+# ===========================================================================
+
+## Forcibly ends the current player's turn with no board-state change --
+## used only by the turn-timer timeout fallback (ServerAuthority for
+## online play, GameScreen's hot-seat equivalent) when a human player
+## hasn't acted in time during TAKE or PLAY, so their turn passes cleanly
+## instead of having a fallback bot act on their behalf. That used to mean
+## a bot could steal from an opponent, or attach a card, without the real
+## player ever choosing to -- which is exactly the surprising behavior
+## this replaces.
+##
+## PLAY still routes through the hand-limit check exactly as a real PLAY
+## action would: if their hand is over the limit from whatever they
+## legitimately drew or stole earlier this same turn, that still has to
+## be resolved, just via the existing hand-limit discard fallback (which
+## only ever touches the stalled player's own hand, never anyone else's
+## board) rather than skipped outright.
+##
+## DRAFT and HAND_LIMIT are deliberately left alone here -- every player
+## must resolve those regardless of presence (there's no such thing as
+## "skip picking a recipe" or "skip discarding below the limit" without
+## leaving the game in a broken state), so callers keep using the
+## existing auto-play fallback for those phases instead of calling this.
+## Never legal for a client to request directly: this bypasses
+## get_legal_actions() entirely by design, since "do nothing" is
+## deliberately never itself a legal action.
+static func skip_turn(state: GameState) -> void:
+	if state.game_over:
+		return
+	match state.phase:
+		GameState.Phase.TAKE:
+			_end_turn(state)
+		GameState.Phase.PLAY:
+			_enter_hand_limit_or_end_turn(state)
+
+# ===========================================================================
 # Phase / turn advancement
 # ===========================================================================
 
