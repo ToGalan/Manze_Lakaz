@@ -56,7 +56,9 @@ func _layout() -> void:
 	# 1.5x the original 90-190 range -- see GameScreen._on_screen_resized()
 	# for why the floor scales too now (a scrollable recipe grid means an
 	# oversized recipe no longer needs hand_fan to stay small to protect it).
-	var card_h: float = clamp(size.y * 0.82, 135.0, 285.0)
+	# 0.90, not 0.82 -- less empty space above and below the fanned cards
+	# within the row's own box.
+	var card_h: float = clamp(size.y * 0.90, 135.0, 285.0)
 	var card_w := card_h * 0.68
 	var max_spread_deg: float = clamp(4.0 * n, 8.0, 28.0)
 
@@ -79,10 +81,9 @@ func _layout() -> void:
 		var t := 0.0 if n == 1 else (float(i) / float(n - 1)) * 2.0 - 1.0
 		var angle_deg := t * (max_spread_deg * 0.5)
 		var arc_lift := (1.0 - t * t) * size.y * 0.09
-		# 14px clear space below the card, not 4 -- GameScreen reserves 10
-		# extra px of hand_fan's own height specifically to fund this, taken
-		# back from the board (see _on_screen_resized()).
-		var base_y := size.y - card_h - 14.0 - arc_lift
+		# 6px clear space below the card -- just enough that it doesn't
+		# look flush-cut against the row's own bottom edge.
+		var base_y := size.y - card_h - 6.0 - arc_lift
 		var base_x := start_x + i * overlap_step
 
 		face.position = Vector2(base_x, base_y)
