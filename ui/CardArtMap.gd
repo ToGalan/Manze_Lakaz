@@ -3,9 +3,9 @@ extends RefCounted
 ## Maps a card's def_id to its shipped face art under res://ui/art/cards --
 ## full pre-made card images (art, name, and category framing all baked in
 ## by the artist) that CardFace shows in place of the procedural
-## CardArtPlaceholder + name label whenever one exists. Cards with no
-## shipped art yet (currently the joker ingredients, added after this art
-## set was delivered) fall back to the procedural rendering unchanged.
+## CardArtPlaceholder + name label whenever one exists. Any card with no
+## entry here (or added later, before its art ships) falls back to the
+## procedural rendering unchanged.
 ##
 ## Presentational only, same as CardCategoryMap -- the engine has no concept
 ## of this mapping.
@@ -28,6 +28,11 @@ const _PATHS := {
 	"goat": "res://ui/art/cards/MLcard_ingr_goat.png",
 	"lime": "res://ui/art/cards/MLcard_ingr_lime.png",
 	"eggs": "res://ui/art/cards/MLcard_ingr_eggs.png",
+	"lamb": "res://ui/art/cards/MLcard_ingr_lamb.png",
+	"pork": "res://ui/art/cards/MLcard_ingr_pork.png",
+	"joker_pantry": "res://ui/art/cards/MLcard_ingr_jokerPantry.png",
+	"joker_protein": "res://ui/art/cards/MLcard_ingr_jokerProtein.png",
+	"joker_vegetable": "res://ui/art/cards/MLcard_ingr_jokerVegetable.png",
 	"simmering": "res://ui/art/cards/MLcard_prep_simmer.png",
 	"marinating": "res://ui/art/cards/MLcard_prep_marinate.png",
 	"grinding": "res://ui/art/cards/MLcard_prep_grind.png",
