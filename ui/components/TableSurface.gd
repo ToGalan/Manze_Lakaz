@@ -9,6 +9,7 @@ class_name TableSurface
 signal take_discard_requested
 
 const CARD_SCENE := preload("res://ui/components/CardFace.tscn")
+const TABLECLOTH_TEXTURE := preload("res://ui/art/MLtexture_tablePlaid.png")
 const PILE_CARD_SIZE := Vector2(96, 130)
 
 var own_recipes_box: HBoxContainer
@@ -21,6 +22,7 @@ var _discard_card: CardFace
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED # lets the tablecloth texture tile across the trapezoid instead of stretching to fit it
 	resized.connect(queue_redraw)
 
 	var margin := MarginContainer.new()
@@ -138,9 +140,10 @@ func _draw() -> void:
 		Vector2(size.x, size.y),
 		Vector2(0, size.y),
 	])
-	var colors := PackedColorArray([
-		GameTheme.COLOR_FELT_DARK, GameTheme.COLOR_FELT_DARK,
-		GameTheme.COLOR_FELT, GameTheme.COLOR_FELT,
-	])
-	draw_polygon(points, colors)
+	var colors := PackedColorArray([Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE])
+	var tex_size := TABLECLOTH_TEXTURE.get_size()
+	var uvs := PackedVector2Array()
+	for p in points:
+		uvs.append(p / tex_size)
+	draw_polygon(points, colors, uvs, TABLECLOTH_TEXTURE)
 	draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[3], points[0]]), GameTheme.COLOR_FELT_EDGE, 3.0, true)

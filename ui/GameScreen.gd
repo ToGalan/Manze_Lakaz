@@ -200,8 +200,9 @@ func _process(_delta: float) -> void:
 # ===========================================================================
 
 func _build_static_ui() -> void:
-	var bg := ColorRect.new()
-	bg.color = GameTheme.COLOR_APP_BG
+	var bg := TextureRect.new()
+	bg.texture = preload("res://ui/art/MLtexture_tableWood.png")
+	bg.stretch_mode = TextureRect.STRETCH_TILE
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
