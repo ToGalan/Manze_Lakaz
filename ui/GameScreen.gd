@@ -155,8 +155,18 @@ var _draft_keep_sfx_played: bool = false
 const DRAFT_BEGIN_SFX := preload("res://sfx/747805__hope_sounds_3__countingplayingcards.wav")
 var _draft_begin_sfx_played: bool = false
 
-var sfx_player: AudioStreamPlayer
-var _sfx_play_token: int = 0 # invalidates a pending max-duration auto-stop once a different sound has since started (see _play_sfx())
+## A small round-robin pool, not one shared player: one-shot sfx
+## previously all funneled through a single AudioStreamPlayer, so any new
+## sound truncated whatever was still playing -- most noticeably the steal
+## "yoink" getting chopped mid-sample by the very next action's sound
+## during a fast bot-driven turn. See _play_sfx() for the selection logic
+## (prefer an idle player; only reuse a busy one, round-robin, once every
+## member is occupied) and _sfx_pool_tokens (the per-player version of the
+## old single _sfx_play_token guard).
+const SFX_POOL_SIZE := 4
+var _sfx_pool: Array[AudioStreamPlayer] = []
+var _sfx_pool_tokens: Array[int] = [] # per pool index -- invalidates a pending max-duration auto-stop once a *different* sound has since taken over that specific player (see _play_sfx())
+var _sfx_pool_next_index: int = 0 # round-robin cursor, only advanced when every player is already busy and one has to be reused
 
 ## Only the last TURN_TIMER_WARNING_SECONDS of this clip are ever heard --
 ## see the countdown-crossing check in _process() -- so it plays as a
@@ -360,9 +370,12 @@ func _build_static_ui() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
-	sfx_player = AudioStreamPlayer.new()
-	sfx_player.bus = "SFX"
-	add_child(sfx_player)
+	for i in SFX_POOL_SIZE:
+		var player := AudioStreamPlayer.new()
+		player.bus = "SFX"
+		add_child(player)
+		_sfx_pool.append(player)
+		_sfx_pool_tokens.append(0)
 
 	timer_warning_player = AudioStreamPlayer.new()
 	timer_warning_player.bus = "SFX"
@@ -684,17 +697,26 @@ func _submit_action(action: Action) -> void:
 			_play_sfx(ACTION_SFX.get(action.type))
 	session.submit_action(action)
 
-## Skips a retrigger while the exact same clip is still playing, so a rapid
-## repeat of the same cue (e.g. an online click landing again before the
-## server's confirming snapshot disables the button) can't sound like it
-## fired twice. A genuinely different cue interrupts and plays immediately,
-## same as before.
+## Skips a retrigger while the exact same clip is already playing on any
+## pool member, so a rapid repeat of the same cue (e.g. an online click
+## landing again before the server's confirming snapshot disables the
+## button) can't sound like it fired twice or stack into a phasing mess. A
+## genuinely different cue always gets a player -- an idle one if any pool
+## member has one free, otherwise the least-recently-reused busy one
+## (round-robin), so it interrupts as narrowly as possible instead of
+## always stealing the same slot. This is the actual fix for the steal
+## "yoink" getting chopped mid-sample by the next action's sound during a
+## fast bot-driven turn -- with SFX_POOL_SIZE >= 2 concurrent sounds, both
+## get their own player and neither truncates the other.
 ##
 ## max_seconds, if given, cuts the clip short instead of letting it play to
 ## its natural end -- e.g. a shuffle/deal sound that's really just meant as
-## a quick flourish, not the whole source file. Guarded by _sfx_play_token
-## so a later, different sound (already playing by the time this timer
-## fires) never gets stopped by a stale cutoff meant for the earlier one.
+## a quick flourish, not the whole source file. Guarded by
+## _sfx_pool_tokens[index], the per-player version of what used to be one
+## shared _sfx_play_token: a cutoff timer is bound to the specific pool
+## slot it was scheduled for, so it can only ever stop the playback it was
+## created for, never a different sound that reused (or moved on from)
+## that same slot in the meantime.
 ##
 ## Skipped outright (not queued for later) before _audio_unlocked -- see
 ## _unlock_audio() -- since play() into a still-suspended browser
@@ -703,16 +725,28 @@ func _submit_action(action: Action) -> void:
 func _play_sfx(stream: AudioStream, max_seconds: float = 0.0) -> void:
 	if stream == null or not _audio_unlocked:
 		return
-	if sfx_player.playing and sfx_player.stream == stream:
-		return
-	sfx_player.stream = stream
-	sfx_player.play()
-	_sfx_play_token += 1
+	for player in _sfx_pool:
+		if player.playing and player.stream == stream:
+			return
+
+	var index := -1
+	for i in _sfx_pool.size():
+		if not _sfx_pool[i].playing:
+			index = i
+			break
+	if index == -1:
+		index = _sfx_pool_next_index
+		_sfx_pool_next_index = (_sfx_pool_next_index + 1) % _sfx_pool.size()
+
+	var player: AudioStreamPlayer = _sfx_pool[index]
+	player.stream = stream
+	player.play()
+	_sfx_pool_tokens[index] += 1
 	if max_seconds > 0.0:
-		var token := _sfx_play_token
+		var token: int = _sfx_pool_tokens[index]
 		get_tree().create_timer(max_seconds).timeout.connect(func():
-			if _sfx_play_token == token:
-				sfx_player.stop()
+			if _sfx_pool_tokens[index] == token:
+				player.stop()
 		)
 
 ## Attached cards (preparations included) are always public information --
