@@ -1801,19 +1801,32 @@ func _on_hotseat_turn_timer_expired(fired_token: int) -> void:
 		return
 
 	var stalled_player := state.current_player_index
-	# The draft is turn-based per player too, but _advance_draft() can land
-	# the LAST drafter's index back on player 0 the moment the draft
-	# finishes -- if the stalled player happened to be player 0, a bare
-	# current_player_index check would wrongly treat their brand new TAKE
-	# turn as "still the same stalled draft turn" and keep auto-playing
-	# past it. Stopping at the DRAFT->TAKE phase boundary too closes that
-	# gap without otherwise touching the normal TAKE/PLAY/HAND_LIMIT loop,
-	# which is one continuous turn for the same player by design.
-	var stalled_in_draft := state.phase == GameState.Phase.DRAFT
 	selected_card_id = -1
 	selected_move_prep_id = -1
 	_pending_joker_choices = []
 
+	# TAKE/PLAY: skip the turn outright, no bot plays on the stalled
+	# player's behalf -- see RulesEngine.skip_turn() for why (a fallback
+	# bot choosing to steal or attach for a player who never actually
+	# chose to was the exact bug this replaced, same as ServerAuthority's
+	# equivalent online).
+	if state.phase == GameState.Phase.TAKE or state.phase == GameState.Phase.PLAY:
+		RulesEngine.skip_turn(state)
+		_append_log_line("(Turn timer expired) Player %d's turn was skipped" % (stalled_player + 1))
+		session.state_changed.emit()
+		return
+
+	# DRAFT/HAND_LIMIT can't be skipped -- every player must resolve these
+	# regardless of presence, so fall back to auto-play exactly as before,
+	# looping until this player's turn (potentially several picks/discards)
+	# actually finishes. The draft is turn-based per player too, but
+	# _advance_draft() can land the LAST drafter's index back on player 0
+	# the moment the draft finishes -- if the stalled player happened to be
+	# player 0, a bare current_player_index check would wrongly treat
+	# their brand new TAKE turn as "still the same stalled draft turn" and
+	# keep auto-playing past it. Stopping at the DRAFT->TAKE phase
+	# boundary closes that gap.
+	var stalled_in_draft := state.phase == GameState.Phase.DRAFT
 	var steps := 0
 	while steps < 20 and not state.game_over and state.current_player_index == stalled_player \
 			and (not stalled_in_draft or state.phase == GameState.Phase.DRAFT):

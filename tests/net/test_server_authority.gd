@@ -105,17 +105,33 @@ func test_rejoin_with_unknown_token_is_rejected() -> void:
 	authority.handle_rejoin_request(777, "not-a-real-token")
 	TestUtil.assert_false(authority.peer_to_seat.has(777), "an unrecognized token must not grant a seat")
 
-func test_turn_timer_fallback_auto_plays_when_invoked() -> void:
+func test_turn_timer_skips_a_stalled_human_seat_without_acting_for_them() -> void:
 	var authority := _make_authority_with_started_game()
 	var alloc := TestFixtures.make_card_allocator()
 	authority.state.current_player_index = 0
 	authority.state.phase = GameState.Phase.TAKE
 	authority.state.deck = [alloc.call("oil", CardDef.Category.INGREDIENT)]
 	authority.auto_play_difficulty = AiBot.Difficulty.EASY
+	# _make_authority_with_started_game() seats both players as human
+	# (seat_is_ai is never populated), which is the case this covers.
 
 	authority._on_turn_timer_expired(authority._turn_timer_token) # simulate the configured timer firing
 
-	TestUtil.assert_eq(authority.state.players[0].hand.size(), 1, "when no client acts in time, the fallback bot should take one action for the current player")
+	TestUtil.assert_eq(authority.state.players[0].hand.size(), 0, "a stalled human seat's turn should be skipped, not played for them -- no card should be drawn")
+	TestUtil.assert_eq(authority.state.current_player_index, 1, "the turn should move on to the next player")
+
+func test_turn_timer_still_auto_plays_for_an_ai_seat() -> void:
+	var authority := _make_authority_with_started_game()
+	var alloc := TestFixtures.make_card_allocator()
+	authority.state.current_player_index = 0
+	authority.state.phase = GameState.Phase.TAKE
+	authority.state.deck = [alloc.call("oil", CardDef.Category.INGREDIENT)]
+	authority.seat_is_ai = {0: true, 1: false}
+	authority.ai_fill_difficulty = AiBot.Difficulty.EASY
+
+	authority._on_turn_timer_expired(authority._turn_timer_token)
+
+	TestUtil.assert_eq(authority.state.players[0].hand.size(), 1, "an AI seat has no client that could ever act for it -- the fallback bot must still play its turn, unlike a stalled human seat")
 
 func test_stale_turn_timer_callback_is_ignored() -> void:
 	var authority := _make_authority_with_started_game()

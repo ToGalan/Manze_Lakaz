@@ -211,6 +211,23 @@ func _on_turn_timer_expired(fired_token: int) -> void:
 		return
 
 	var seat := state.current_player_index
+
+	# A human seat that simply hasn't acted in time has their turn skipped
+	# outright -- see RulesEngine.skip_turn() for why (a fallback bot
+	# choosing to steal or attach on their behalf, which the old behavior
+	# here did, could spend a real player's steal without them ever
+	# choosing to). AI seats always still need the bot fallback below: it
+	# is the only thing that ever plays their turns at all.
+	if not seat_is_ai.get(seat, false) and (state.phase == GameState.Phase.TAKE or state.phase == GameState.Phase.PLAY):
+		RulesEngine.skip_turn(state)
+		_broadcast_snapshots()
+		_broadcast_log_line("Player %d's turn timed out and was skipped" % (seat + 1))
+		if state.game_over:
+			_turn_timer_token += 1
+		else:
+			_arm_turn_timer()
+		return
+
 	var legal := RulesEngine.get_legal_actions(state)
 	if legal.is_empty():
 		_arm_turn_timer()
