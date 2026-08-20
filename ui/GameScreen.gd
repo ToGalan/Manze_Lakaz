@@ -478,9 +478,21 @@ func _build_static_ui() -> void:
 	prompt_buttons_box = HBoxContainer.new()
 	prompt_row.add_child(prompt_buttons_box)
 
+	# A direct child of this Control, not of main_layout -- floats over
+	# the bottom of the screen (the prompt bar included) instead of
+	# taking its own reserved row in main_layout's vertical stack, which
+	# hands that space back to the table/recipe area above. Added after
+	# outer_margin so it draws on top of prompt_panel; still below
+	# overlay_layer (see _build_overlays() next) so menus/draft/etc. still
+	# correctly cover it when active. mouse_filter = PASS (set in
+	# HandFan._init()) is what makes this actually work -- a click in the
+	# empty space between/around cards falls through to whatever's
+	# underneath (the prompt bar's Draw button, most often) instead of
+	# being swallowed by the fan's own bounding rect.
 	hand_fan = HandFan.new()
 	hand_fan.card_clicked.connect(_on_hand_card_clicked)
-	main_layout.add_child(hand_fan)
+	hand_fan.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	add_child(hand_fan)
 
 	_build_overlays()
 
@@ -539,27 +551,52 @@ func _build_static_ui() -> void:
 ## HandFan already uses internally for its own card sizing) keeps every
 ## section visible and usable at any window size instead of just the one
 ## this was designed at.
+## Reserved clear width at the right edge of hand_fan's floating rect (see
+## _on_screen_resized()) so its cards never physically reach prompt_row's
+## button column (Draw, Discard/Cancel, joker-slot choices, ...), which
+## always hugs that same right edge (prompt_label is SIZE_EXPAND_FILL,
+## pushing prompt_buttons_box there). This has to be geometric, not a
+## z_index trick: Control's click hit-testing goes by scene-tree order,
+## not the CanvasItem z_index that decides *drawing* order, so a higher
+## z_index on the buttons alone does not make them win a click against a
+## card drawn later in the tree above them (confirmed empirically -- it
+## visually looked right and still ate every click). Generous enough for
+## the common 1-2 button case (Draw, or Discard+Cancel); a rare 4-button
+## joker-slot prompt could still have its leftmost choice brush the
+## hand's rightmost card, an acceptable edge case next to every other
+## prompt staying fully clickable.
+const HAND_FAN_RIGHT_CLEARANCE := 260.0
+
 func _on_screen_resized() -> void:
 	if size.y <= 0.0 or size.x <= 0.0:
 		return
-	# hand_fan's range is trimmed from the original (110-190 @ 0.24) since
-	# the table no longer scrolls (see TableSurface._init()) -- the board
-	# needs to keep enough of the remaining height for the tallest recipe
-	# panel to fit without it, so hand_fan gives up some of its own share;
-	# cards still read fine smaller (HandFan's own card_h derives from this
-	# same height). The +10 here (110-160, not 100-150) is deliberately
-	# taken back from the board -- it funds HandFan's own bottom padding
-	# (see HandFan._layout()) so cards don't sit flush against, or spill
-	# past, the row's bottom edge.
-	# Cards ~1.5x bigger: floor, ceiling, and multiplier all scaled up
-	# (110-160 -> 165-240). A first attempt only raised the ceiling, to
-	# avoid an oversized recipe panel spilling past the table -- but that
-	# meant a 1280x720 window (this project's own default size) landed
-	# exactly on the untouched floor, with no visible growth at all. Now
-	# safe to scale uniformly: the tallest recipe's slot grid scrolls
-	# instead of overflowing once it doesn't fit (see the ScrollContainer
-	# in _build_own_recipe_panel()).
-	hand_fan.custom_minimum_size.y = clampf(size.y * 0.27, 165.0, 240.0)
+	# hand_fan floats over the bottom of the screen (see _build_static_ui())
+	# rather than taking its own row in main_layout, so this is a plain
+	# Control outside any Container -- custom_minimum_size means nothing to
+	# it here, its actual rect comes from these offsets against its
+	# PRESET_BOTTOM_WIDE anchors. 12px matches outer_margin's own margin
+	# (see GameTheme's base MarginContainer variation) so the fan's card
+	# row lines up with everything else's left/right/bottom edges instead
+	# of running flush to the true screen edge; the right edge additionally
+	# gives up HAND_FAN_RIGHT_CLEARANCE so it never overlaps prompt_row's
+	# buttons (see that constant's own comment for why this has to be
+	# geometric).
+	# Cards ~1.5x bigger than the original 90-190 clamp in HandFan.gd:
+	# floor, ceiling, and multiplier all scaled up (110-160 -> 165-240). A
+	# first attempt only raised the ceiling, to avoid an oversized recipe
+	# panel spilling past the table -- but that meant a 1280x720 window
+	# (this project's own default size) landed exactly on the untouched
+	# floor, with no visible growth at all. Safe to scale uniformly now
+	# that the tallest recipe's slot grid scrolls instead of overflowing
+	# once it doesn't fit (see the ScrollContainer in
+	# _build_own_recipe_panel()) -- and safer still now that hand_fan no
+	# longer competes with the table for main_layout's own height at all,
+	# floating over the prompt bar instead.
+	var hand_fan_height := clampf(size.y * 0.27, 165.0, 240.0)
+	hand_fan.offset_left = 12.0
+	hand_fan.offset_right = -HAND_FAN_RIGHT_CLEARANCE
+	hand_fan.offset_top = -hand_fan_height
+	hand_fan.offset_bottom = -12.0
 	prompt_panel.custom_minimum_size.y = clampf(size.y * 0.09, 48.0, 64.0)
 	log_panel.custom_minimum_size.x = clampf(size.x * 0.22, 160.0, 320.0)
 
