@@ -407,23 +407,6 @@ func _build_static_ui() -> void:
 	ambience_player.stream = ambience_stream
 	add_child(ambience_player)
 
-	# A direct child of this Control, not of main_layout -- floats over
-	# the bottom of the screen (the prompt bar included) instead of
-	# taking its own reserved row in main_layout's vertical stack, which
-	# hands that space back to the table/recipe area above. Added BEFORE
-	# outer_margin so the prompt bar (built below, part of outer_margin's
-	# content) draws -- and hit-tests -- on top of it wherever the two
-	# overlap: the bar's own text and Draw/Discard/Cancel buttons must
-	# stay legible and clickable regardless of what the fan is doing, so
-	# a card tucks behind the bar there rather than the other way around.
-	# mouse_filter = PASS (set in HandFan._init()) still matters for the
-	# table/recipe area above, where nothing overlaps it at all -- a click
-	# in the empty space around a card there falls through cleanly.
-	hand_fan = HandFan.new()
-	hand_fan.card_clicked.connect(_on_hand_card_clicked)
-	hand_fan.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	add_child(hand_fan)
-
 	var outer_margin := MarginContainer.new()
 	outer_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(outer_margin)
@@ -495,6 +478,10 @@ func _build_static_ui() -> void:
 	prompt_buttons_box = HBoxContainer.new()
 	prompt_row.add_child(prompt_buttons_box)
 
+	hand_fan = HandFan.new()
+	hand_fan.card_clicked.connect(_on_hand_card_clicked)
+	main_layout.add_child(hand_fan)
+
 	_build_overlays()
 
 	animation_layer = Control.new()
@@ -555,17 +542,12 @@ func _build_static_ui() -> void:
 func _on_screen_resized() -> void:
 	if size.y <= 0.0 or size.x <= 0.0:
 		return
-	# hand_fan floats over the bottom of the screen (see _build_static_ui())
-	# rather than taking its own row in main_layout, so this is a plain
-	# Control outside any Container -- custom_minimum_size means nothing to
-	# it here, its actual rect comes from these offsets against its
-	# PRESET_BOTTOM_WIDE anchors. 12px matches outer_margin's own margin
-	# (see GameTheme's base MarginContainer variation) so the fan's card
-	# row lines up with everything else's left/right/bottom edges instead
-	# of running flush to the true screen edge. Full width, no reserved
-	# gap for prompt_row's buttons -- unlike a card, the bar draws (and
-	# hit-tests) on top of hand_fan wherever they overlap, see
-	# _build_static_ui(), so there's nothing for a card to block there.
+	# hand_fan is back to being a normal main_layout child, below
+	# prompt_panel in the vertical stack -- the bar reads as its own
+	# distinct row above the hand, not something cards tuck behind. This
+	# does give back the extra table/recipe room the floating-overlay
+	# version bought, since main_layout is reserving hand_fan's own space
+	# in the layout again, same as prompt_panel's.
 	# Cards ~1.5x bigger than the original 90-190 clamp in HandFan.gd:
 	# floor, ceiling, and multiplier all scaled up (110-160 -> 165-240). A
 	# first attempt only raised the ceiling, to avoid an oversized recipe
@@ -574,14 +556,8 @@ func _on_screen_resized() -> void:
 	# floor, with no visible growth at all. Safe to scale uniformly now
 	# that the tallest recipe's slot grid scrolls instead of overflowing
 	# once it doesn't fit (see the ScrollContainer in
-	# _build_own_recipe_panel()) -- and safer still now that hand_fan no
-	# longer competes with the table for main_layout's own height at all,
-	# floating over the prompt bar instead.
-	var hand_fan_height := clampf(size.y * 0.27, 165.0, 240.0)
-	hand_fan.offset_left = 12.0
-	hand_fan.offset_right = -12.0
-	hand_fan.offset_top = -hand_fan_height
-	hand_fan.offset_bottom = -12.0
+	# _build_own_recipe_panel()).
+	hand_fan.custom_minimum_size.y = clampf(size.y * 0.27, 165.0, 240.0)
 	prompt_panel.custom_minimum_size.y = clampf(size.y * 0.09, 48.0, 64.0)
 	log_panel.custom_minimum_size.x = clampf(size.x * 0.22, 160.0, 320.0)
 
@@ -3100,13 +3076,7 @@ func _apply_overlay_visibility() -> void:
 	gameover_overlay.visible = ui_mode == UiMode.GAME_OVER
 	reconnecting_overlay.visible = ui_mode == UiMode.RECONNECTING
 	overlay_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE if ui_mode == UiMode.PLAY else Control.MOUSE_FILTER_STOP
-	main_layout.visible = ui_mode == UiMode.PLAY
-	# hand_fan is a sibling of outer_margin now, not a child of main_layout
-	# (see _build_static_ui()) -- the line above no longer covers it, so
-	# it has to be hidden here explicitly on the same condition, or it
-	# stays visible through every non-PLAY screen (AI thinking, draft,
-	# menus, ...) instead of only showing during actual play.
-	hand_fan.visible = ui_mode == UiMode.PLAY
+	main_layout.visible = ui_mode == UiMode.PLAY # hand_fan is a main_layout child again, so this covers it too
 
 	var game_in_progress := ui_mode in [UiMode.DRAFT, UiMode.PLAY, UiMode.AI_THINKING, UiMode.RECIPE_REVEAL]
 	leave_game_button.visible = is_network_mode and game_in_progress
