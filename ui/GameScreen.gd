@@ -142,6 +142,11 @@ const ACTION_SFX := {
 const TURN_TIMER_EXPIRED_SFX := preload("res://sfx/47838__delphidebrain__delphis-double-egg-timer.wav")
 var sfx_player: AudioStreamPlayer
 
+## Plays continuously from _ready() onward, through every screen -- there's
+## only one track, so nothing has to pick when to start/stop/switch it.
+const MUSIC_STREAM: AudioStreamWAV = preload("res://sfx/595860__szegvari__africa-safari-love-world-ethnic-modern-soundtrack-music-drum-flute-piano-snare-contemporary-eq-mastered_BG.wav")
+var music_player: AudioStreamPlayer
+
 # Static structure, built once in _ready().
 var main_layout: VBoxContainer
 var top_bar: HFlowContainer
@@ -229,6 +234,14 @@ func _build_static_ui() -> void:
 	sfx_player = AudioStreamPlayer.new()
 	sfx_player.bus = "SFX"
 	add_child(sfx_player)
+
+	var music_stream: AudioStreamWAV = MUSIC_STREAM
+	music_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	music_player = AudioStreamPlayer.new()
+	music_player.bus = "Music"
+	music_player.stream = music_stream
+	add_child(music_player)
+	music_player.play()
 
 	var outer_margin := MarginContainer.new()
 	outer_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
