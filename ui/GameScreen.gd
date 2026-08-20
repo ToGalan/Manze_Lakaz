@@ -407,6 +407,23 @@ func _build_static_ui() -> void:
 	ambience_player.stream = ambience_stream
 	add_child(ambience_player)
 
+	# A direct child of this Control, not of main_layout -- floats over
+	# the bottom of the screen (the prompt bar included) instead of
+	# taking its own reserved row in main_layout's vertical stack, which
+	# hands that space back to the table/recipe area above. Added BEFORE
+	# outer_margin so the prompt bar (built below, part of outer_margin's
+	# content) draws -- and hit-tests -- on top of it wherever the two
+	# overlap: the bar's own text and Draw/Discard/Cancel buttons must
+	# stay legible and clickable regardless of what the fan is doing, so
+	# a card tucks behind the bar there rather than the other way around.
+	# mouse_filter = PASS (set in HandFan._init()) still matters for the
+	# table/recipe area above, where nothing overlaps it at all -- a click
+	# in the empty space around a card there falls through cleanly.
+	hand_fan = HandFan.new()
+	hand_fan.card_clicked.connect(_on_hand_card_clicked)
+	hand_fan.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	add_child(hand_fan)
+
 	var outer_margin := MarginContainer.new()
 	outer_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(outer_margin)
@@ -478,22 +495,6 @@ func _build_static_ui() -> void:
 	prompt_buttons_box = HBoxContainer.new()
 	prompt_row.add_child(prompt_buttons_box)
 
-	# A direct child of this Control, not of main_layout -- floats over
-	# the bottom of the screen (the prompt bar included) instead of
-	# taking its own reserved row in main_layout's vertical stack, which
-	# hands that space back to the table/recipe area above. Added after
-	# outer_margin so it draws on top of prompt_panel; still below
-	# overlay_layer (see _build_overlays() next) so menus/draft/etc. still
-	# correctly cover it when active. mouse_filter = PASS (set in
-	# HandFan._init()) is what makes this actually work -- a click in the
-	# empty space between/around cards falls through to whatever's
-	# underneath (the prompt bar's Draw button, most often) instead of
-	# being swallowed by the fan's own bounding rect.
-	hand_fan = HandFan.new()
-	hand_fan.card_clicked.connect(_on_hand_card_clicked)
-	hand_fan.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	add_child(hand_fan)
-
 	_build_overlays()
 
 	animation_layer = Control.new()
@@ -551,22 +552,6 @@ func _build_static_ui() -> void:
 ## HandFan already uses internally for its own card sizing) keeps every
 ## section visible and usable at any window size instead of just the one
 ## this was designed at.
-## Reserved clear width at the right edge of hand_fan's floating rect (see
-## _on_screen_resized()) so its cards never physically reach prompt_row's
-## button column (Draw, Discard/Cancel, joker-slot choices, ...), which
-## always hugs that same right edge (prompt_label is SIZE_EXPAND_FILL,
-## pushing prompt_buttons_box there). This has to be geometric, not a
-## z_index trick: Control's click hit-testing goes by scene-tree order,
-## not the CanvasItem z_index that decides *drawing* order, so a higher
-## z_index on the buttons alone does not make them win a click against a
-## card drawn later in the tree above them (confirmed empirically -- it
-## visually looked right and still ate every click). Generous enough for
-## the common 1-2 button case (Draw, or Discard+Cancel); a rare 4-button
-## joker-slot prompt could still have its leftmost choice brush the
-## hand's rightmost card, an acceptable edge case next to every other
-## prompt staying fully clickable.
-const HAND_FAN_RIGHT_CLEARANCE := 260.0
-
 func _on_screen_resized() -> void:
 	if size.y <= 0.0 or size.x <= 0.0:
 		return
@@ -577,10 +562,10 @@ func _on_screen_resized() -> void:
 	# PRESET_BOTTOM_WIDE anchors. 12px matches outer_margin's own margin
 	# (see GameTheme's base MarginContainer variation) so the fan's card
 	# row lines up with everything else's left/right/bottom edges instead
-	# of running flush to the true screen edge; the right edge additionally
-	# gives up HAND_FAN_RIGHT_CLEARANCE so it never overlaps prompt_row's
-	# buttons (see that constant's own comment for why this has to be
-	# geometric).
+	# of running flush to the true screen edge. Full width, no reserved
+	# gap for prompt_row's buttons -- unlike a card, the bar draws (and
+	# hit-tests) on top of hand_fan wherever they overlap, see
+	# _build_static_ui(), so there's nothing for a card to block there.
 	# Cards ~1.5x bigger than the original 90-190 clamp in HandFan.gd:
 	# floor, ceiling, and multiplier all scaled up (110-160 -> 165-240). A
 	# first attempt only raised the ceiling, to avoid an oversized recipe
@@ -594,7 +579,7 @@ func _on_screen_resized() -> void:
 	# floating over the prompt bar instead.
 	var hand_fan_height := clampf(size.y * 0.27, 165.0, 240.0)
 	hand_fan.offset_left = 12.0
-	hand_fan.offset_right = -HAND_FAN_RIGHT_CLEARANCE
+	hand_fan.offset_right = -12.0
 	hand_fan.offset_top = -hand_fan_height
 	hand_fan.offset_bottom = -12.0
 	prompt_panel.custom_minimum_size.y = clampf(size.y * 0.09, 48.0, 64.0)
@@ -3116,6 +3101,12 @@ func _apply_overlay_visibility() -> void:
 	reconnecting_overlay.visible = ui_mode == UiMode.RECONNECTING
 	overlay_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE if ui_mode == UiMode.PLAY else Control.MOUSE_FILTER_STOP
 	main_layout.visible = ui_mode == UiMode.PLAY
+	# hand_fan is a sibling of outer_margin now, not a child of main_layout
+	# (see _build_static_ui()) -- the line above no longer covers it, so
+	# it has to be hidden here explicitly on the same condition, or it
+	# stays visible through every non-PLAY screen (AI thinking, draft,
+	# menus, ...) instead of only showing during actual play.
+	hand_fan.visible = ui_mode == UiMode.PLAY
 
 	var game_in_progress := ui_mode in [UiMode.DRAFT, UiMode.PLAY, UiMode.AI_THINKING, UiMode.RECIPE_REVEAL]
 	leave_game_button.visible = is_network_mode and game_in_progress
