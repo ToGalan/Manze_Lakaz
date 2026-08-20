@@ -123,6 +123,25 @@ var leave_game_button: Button # persistent, visible only mid-game in network mod
 var turn_timer_badge: PanelContainer # persistent, bottom-right; visible only while a hot-seat turn countdown is actually running
 var turn_timer_label: Label
 
+## One clip per Action.Type, played once from _submit_action() -- no
+## randomized variety, just a single consistent cue per action so it stays
+## recognizable. Only ever fires for THIS device's own locally-submitted
+## actions (hot-seat covers both players since they share one device;
+## online only plays for the acting client, not for opponents watching a
+## snapshot arrive -- there's no typed "an action just happened" signal
+## broadcast to observers to hook, only the log line's text).
+const ACTION_SFX := {
+	Action.Type.DRAFT_KEEP: preload("res://sfx/zapsplat_leisure_playing_cards_flick_through_shuffle_007_62510.mp3"),
+	Action.Type.DRAW: preload("res://sfx/423769__someonecool15__playing-cards-being-delt.mp3"),
+	Action.Type.STEAL: preload("res://sfx/448995__qubodup__yoink-stealing-sound-effect.wav"), # Godot can't import the source .flac directly; converted to .wav once, see the file alongside it
+	Action.Type.ATTACH: preload("res://sfx/740218__simeonradivoev__sci-fi-robotic-attachment.mp3"),
+	Action.Type.DISCARD: preload("res://sfx/zapsplat_leisure_trading_or_playing_card_shuffle_002_77303.mp3"),
+	Action.Type.TAKE_DISCARD: preload("res://sfx/zapsplat_leisure_trading_card_or_playing_card_shuffle_turn_over_single_001_68322.mp3"),
+	Action.Type.MOVE_PREPARATION: preload("res://sfx/747805__hope_sounds_3__countingplayingcards.wav"),
+}
+const TURN_TIMER_EXPIRED_SFX := preload("res://sfx/47838__delphidebrain__delphis-double-egg-timer.wav")
+var sfx_player: AudioStreamPlayer
+
 # Static structure, built once in _ready().
 var main_layout: VBoxContainer
 var top_bar: HFlowContainer
@@ -201,11 +220,15 @@ func _process(_delta: float) -> void:
 
 func _build_static_ui() -> void:
 	var bg := TextureRect.new()
-	bg.texture = preload("res://ui/art/MLtexture_tableWood.png")
-	bg.stretch_mode = TextureRect.STRETCH_TILE
+	bg.texture = preload("res://ui/art/MLtexture_tableWood_16-9.png")
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED # a 16:9 source image, fills any window size without seams or distortion
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
+
+	sfx_player = AudioStreamPlayer.new()
+	sfx_player.bus = "SFX"
+	add_child(sfx_player)
 
 	var outer_margin := MarginContainer.new()
 	outer_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -472,7 +495,14 @@ func _on_session_state_changed() -> void:
 	_advance_ui_after_state_change()
 
 func _submit_action(action: Action) -> void:
+	_play_sfx(ACTION_SFX.get(action.type))
 	session.submit_action(action)
+
+func _play_sfx(stream: AudioStream) -> void:
+	if stream == null:
+		return
+	sfx_player.stream = stream
+	sfx_player.play()
 
 func _viewer_index() -> int:
 	return session.viewer_index()
@@ -1813,6 +1843,7 @@ func _on_hotseat_turn_timer_expired(fired_token: int) -> void:
 	# equivalent online).
 	if state.phase == GameState.Phase.TAKE or state.phase == GameState.Phase.PLAY:
 		RulesEngine.skip_turn(state)
+		_play_sfx(TURN_TIMER_EXPIRED_SFX)
 		_append_log_line("(Turn timer expired) Player %d's turn was skipped" % (stalled_player + 1))
 		session.state_changed.emit()
 		return
