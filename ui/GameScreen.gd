@@ -177,10 +177,28 @@ var timer_warning_player: AudioStreamPlayer
 const GAME_START_SFX := preload("res://sfx/740091__fossarts__turning-on-gas-stove-1.wav")
 var _game_start_sfx_played: bool = false
 
-## Plays continuously from _ready() onward, through every screen -- there's
-## only one track, so nothing has to pick when to start/stop/switch it.
+## Plays continuously from the first main-menu button press onward (see
+## _unlock_audio()), through every screen after that -- there's only one
+## track, so nothing has to pick when to start/stop/switch it. Never
+## started from _ready()/_build_static_ui() directly: a browser's autoplay
+## policy blocks the AudioContext until a real user gesture, and calling
+## play() before one is issued is silently dropped rather than deferred,
+## which is exactly the "no sound until the page is refreshed" bug this
+## unlock step exists to avoid on the web export.
 const MUSIC_STREAM: AudioStreamWAV = preload("res://sfx/595860__szegvari__africa-safari-love-world-ethnic-modern-soundtrack-music-drum-flute-piano-snare-contemporary-eq-mastered_BG.wav")
 var music_player: AudioStreamPlayer
+
+## Set once a real user gesture has resumed the browser's AudioContext (or
+## immediately, on a native build where no such restriction exists) -- see
+## _unlock_audio(). Every actual playback call in this file (music, sfx,
+## the timer warning, the prep ambience) is gated behind this, since
+## attempting to play into a still-suspended AudioContext is silently
+## dropped, not queued. Never reset once true -- _connect_session() runs
+## again for every new game/session, same as _game_start_sfx_played and
+## friends, but audio being unlocked is a browser-tab-lifetime fact, not a
+## per-game one.
+var _audio_unlocked: bool = false
+var _audio_unlock_in_progress: bool = false # re-entrancy guard while a web resume is still being polled
 
 ## Layered on top of the main track (which ducks by MUSIC_DUCK_VOLUME_DB)
 ## the first time ANY player's recipe has a preparation card attached --
@@ -235,7 +253,7 @@ func _ready() -> void:
 		DATA_DIR + "/recipes.json"
 	)
 
-	_ensure_audio_buses() # must exist before _build_static_ui() creates AudioStreamPlayers routed to them (music_player starts playing immediately)
+	_ensure_audio_buses() # must exist before _build_static_ui() creates AudioStreamPlayers routed to them
 	_build_static_ui()
 	_load_settings()
 
@@ -267,8 +285,68 @@ func _process(_delta: float) -> void:
 
 	if not _timer_warning_played and remaining_ms <= int(TURN_TIMER_WARNING_SECONDS * 1000.0):
 		_timer_warning_played = true
-		timer_warning_player.stream = TURN_TIMER_WARNING_SFX
-		timer_warning_player.play(maxf(0.0, TURN_TIMER_WARNING_SFX.get_length() - TURN_TIMER_WARNING_SECONDS))
+		# Marked played either way -- by the time a turn timer can even be
+		# running, audio has always already been unlocked via the
+		# main-menu click that started the flow (the only real exception,
+		# a reconnect that skips the menu entirely, has no later gesture
+		# to unlock on anyway, so there's nothing to defer this to).
+		if _audio_unlocked:
+			timer_warning_player.stream = TURN_TIMER_WARNING_SFX
+			timer_warning_player.play(maxf(0.0, TURN_TIMER_WARNING_SFX.get_length() - TURN_TIMER_WARNING_SECONDS))
+
+## Connected to every main-menu button's pressed signal (see
+## _show_main_menu()) -- the first one to actually fire is this browser
+## tab's one real user gesture, which a web export needs before its
+## AudioContext will produce sound at all. Idempotent: a later main-menu
+## visit (leaving a game, network disconnect, ...) rebuilds those buttons
+## and reconnects this same handler, but _audio_unlocked short-circuits it
+## instantly once already true, so nothing about playback gets restarted
+## or re-ducked.
+func _unlock_audio() -> void:
+	if _audio_unlocked or _audio_unlock_in_progress:
+		return
+	_audio_unlock_in_progress = true
+	if OS.has_feature("web"):
+		var resumed := await _resume_web_audio_context()
+		if not resumed:
+			# Stays locked -- the next main-menu button press (there's
+			# always another one available; the player hasn't left the
+			# menu yet) gets a fresh attempt instead of giving up for the
+			# whole session.
+			_audio_unlock_in_progress = false
+			return
+	_audio_unlocked = true
+	_audio_unlock_in_progress = false
+	music_player.play()
+	if _prep_ambience_started:
+		_apply_prep_ambience()
+
+## Godot's own web audio driver already listens for a user gesture to
+## resume its AudioContext, but that internal resume can race whatever
+## play() call this same gesture triggers -- calling play() before the
+## resume has actually landed gets silently dropped rather than deferred,
+## which is precisely the "plays once, muted, never again until refresh"
+## bug this whole unlock step exists to avoid. Explicitly requesting the
+## resume and then polling until the context reports "running" (capped so
+## a page that genuinely has no audio context, or whose internals changed
+## in a future engine version, doesn't hang here forever) means play() is
+## only ever called once sound can actually come out.
+func _resume_web_audio_context() -> bool:
+	var has_context: bool = JavaScriptBridge.eval(
+		"typeof GodotAudio !== 'undefined' && !!GodotAudio.ctx", true
+	)
+	if not has_context:
+		push_warning("GameScreen: no GodotAudio.ctx found to resume -- proceeding without an explicit unlock")
+		return true
+
+	JavaScriptBridge.eval("if (GodotAudio.ctx.state === 'suspended') { GodotAudio.ctx.resume(); }", true)
+	for _attempt in 30:
+		var ctx_state: String = JavaScriptBridge.eval("GodotAudio.ctx.state", true)
+		if ctx_state == "running":
+			return true
+		await get_tree().process_frame
+	push_warning("GameScreen: AudioContext did not report 'running' after resume -- will retry on the next menu interaction")
+	return false
 
 # ===========================================================================
 # Static UI construction (built once)
@@ -290,15 +368,26 @@ func _build_static_ui() -> void:
 	timer_warning_player.bus = "SFX"
 	add_child(timer_warning_player)
 
-	var music_stream: AudioStreamWAV = MUSIC_STREAM
+	# Setting loop_mode via the .import sidecar (edit/loop_mode) instead of
+	# here was tried first, since preload() returns the one shared cached
+	# resource instance and mutating it at runtime looks like configuring a
+	# local copy while actually changing that instance for every future
+	# preload() of it too. Confirmed empirically (a fresh reimport, then a
+	# cache-bypassed ResourceLoader.load() of the .wav directly) that this
+	# engine version's WAV importer does not actually propagate
+	# edit/loop_mode into the imported resource -- it reads back
+	# loop_mode=0 regardless of what the .import file says. .duplicate()
+	# here gets the same practical safety (this player's own copy, not the
+	# shared cache) without depending on that importer behavior.
+	var music_stream: AudioStreamWAV = MUSIC_STREAM.duplicate()
 	music_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	music_player = AudioStreamPlayer.new()
 	music_player.bus = "Music"
 	music_player.stream = music_stream
 	add_child(music_player)
-	music_player.play()
+	# Not started here -- see _unlock_audio().
 
-	var ambience_stream: AudioStreamWAV = FRYING_AMBIENCE_SFX
+	var ambience_stream: AudioStreamWAV = FRYING_AMBIENCE_SFX.duplicate()
 	ambience_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	ambience_player = AudioStreamPlayer.new()
 	ambience_player.bus = "Music"
@@ -606,8 +695,13 @@ func _submit_action(action: Action) -> void:
 ## a quick flourish, not the whole source file. Guarded by _sfx_play_token
 ## so a later, different sound (already playing by the time this timer
 ## fires) never gets stopped by a stale cutoff meant for the earlier one.
+##
+## Skipped outright (not queued for later) before _audio_unlocked -- see
+## _unlock_audio() -- since play() into a still-suspended browser
+## AudioContext is silently dropped anyway; a fired-but-lost cue would be
+## indistinguishable from a real bug.
 func _play_sfx(stream: AudioStream, max_seconds: float = 0.0) -> void:
-	if stream == null:
+	if stream == null or not _audio_unlocked:
 		return
 	if sfx_player.playing and sfx_player.stream == stream:
 		return
@@ -625,6 +719,13 @@ func _play_sfx(stream: AudioStream, max_seconds: float = 0.0) -> void:
 ## the whole steal mechanic depends on every player seeing what's attached
 ## to every recipe -- so this is safe to check directly off state.players
 ## even for a network client's own shadow state, not just the local hand.
+##
+## Recording the condition (_prep_ambience_started) and actually starting
+## the audio for it (_apply_prep_ambience()) are deliberately separate:
+## this can be reached before _audio_unlocked (a reconnect that lands
+## straight into an already-cooking game, skipping the main menu's unlock
+## click entirely) and the fact still needs recording even though nothing
+## can play yet -- _unlock_audio() re-applies it once unlocked.
 func _check_prep_ambience() -> void:
 	if _prep_ambience_started:
 		return
@@ -632,9 +733,14 @@ func _check_prep_ambience() -> void:
 		for recipe in p.recipes:
 			if not recipe.filled_preparations.is_empty():
 				_prep_ambience_started = true
-				music_player.volume_db = MUSIC_DUCK_VOLUME_DB
-				ambience_player.play()
+				_apply_prep_ambience()
 				return
+
+func _apply_prep_ambience() -> void:
+	if not _audio_unlocked:
+		return
+	music_player.volume_db = MUSIC_DUCK_VOLUME_DB
+	ambience_player.play()
 
 func _viewer_index() -> int:
 	return session.viewer_index()
@@ -702,6 +808,7 @@ func _show_main_menu() -> void:
 	play_btn.text = "Play"
 	play_btn.custom_minimum_size = Vector2(240, 0)
 	play_btn.pressed.connect(_on_play_menu_pressed)
+	play_btn.pressed.connect(_unlock_audio) # see _unlock_audio() -- every button here does this, Play is just the most common first click
 	button_col.add_child(play_btn)
 
 	var how_to_play_btn := Button.new()
@@ -709,6 +816,7 @@ func _show_main_menu() -> void:
 	how_to_play_btn.text = "How to Play"
 	how_to_play_btn.custom_minimum_size = Vector2(240, 0)
 	how_to_play_btn.pressed.connect(_on_how_to_play_menu_pressed)
+	how_to_play_btn.pressed.connect(_unlock_audio)
 	button_col.add_child(how_to_play_btn)
 
 	var settings_btn := Button.new()
@@ -716,6 +824,7 @@ func _show_main_menu() -> void:
 	settings_btn.text = "Settings"
 	settings_btn.custom_minimum_size = Vector2(240, 0)
 	settings_btn.pressed.connect(_show_settings)
+	settings_btn.pressed.connect(_unlock_audio)
 	button_col.add_child(settings_btn)
 
 	# Quitting a browser tab from inside the page isn't a real/friendly
