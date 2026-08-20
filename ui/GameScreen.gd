@@ -139,8 +139,24 @@ const ACTION_SFX := {
 	Action.Type.TAKE_DISCARD: preload("res://sfx/zapsplat_leisure_trading_card_or_playing_card_shuffle_turn_over_single_001_68322.mp3"),
 	Action.Type.MOVE_PREPARATION: preload("res://sfx/747805__hope_sounds_3__countingplayingcards.wav"),
 }
-const TURN_TIMER_EXPIRED_SFX := preload("res://sfx/47838__delphidebrain__delphis-double-egg-timer.wav")
+## Only the last TURN_TIMER_WARNING_SECONDS of this clip are ever heard --
+## see the countdown-crossing check in _process() -- so it plays as a
+## ticking/ringing alarm that builds tension right up to 0, rather than the
+## whole ~87s file dumped out in full the moment a turn actually expires.
+const TURN_TIMER_WARNING_SFX := preload("res://sfx/47838__delphidebrain__delphis-double-egg-timer.wav")
+const TURN_TIMER_WARNING_SECONDS := 10.0
+var _timer_warning_played: bool = false
+var timer_warning_player: AudioStreamPlayer
 var sfx_player: AudioStreamPlayer
+
+## Played once from _on_start_pressed() (hot-seat) or the first snapshot a
+## network client ever receives (see _advance_ui_after_state_change()) --
+## "lighting the stove" to mark a brand new game actually starting, not
+## just returning to a game already in progress (a reconnect never calls
+## _connect_session() again, so _game_start_sfx_played stays true and this
+## correctly never replays for one).
+const GAME_START_SFX := preload("res://sfx/740091__fossarts__turning-on-gas-stove-1.wav")
+var _game_start_sfx_played: bool = false
 
 ## Plays continuously from _ready() onward, through every screen -- there's
 ## only one track, so nothing has to pick when to start/stop/switch it.
@@ -219,6 +235,11 @@ func _process(_delta: float) -> void:
 	turn_timer_badge.visible = true
 	turn_timer_label.text = "Turn ends in %d:%02d" % [remaining_seconds / 60, remaining_seconds % 60]
 
+	if not _timer_warning_played and remaining_ms <= int(TURN_TIMER_WARNING_SECONDS * 1000.0):
+		_timer_warning_played = true
+		timer_warning_player.stream = TURN_TIMER_WARNING_SFX
+		timer_warning_player.play(maxf(0.0, TURN_TIMER_WARNING_SFX.get_length() - TURN_TIMER_WARNING_SECONDS))
+
 # ===========================================================================
 # Static UI construction (built once)
 # ===========================================================================
@@ -234,6 +255,10 @@ func _build_static_ui() -> void:
 	sfx_player = AudioStreamPlayer.new()
 	sfx_player.bus = "SFX"
 	add_child(sfx_player)
+
+	timer_warning_player = AudioStreamPlayer.new()
+	timer_warning_player.bus = "SFX"
+	add_child(timer_warning_player)
 
 	var music_stream: AudioStreamWAV = MUSIC_STREAM
 	music_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
@@ -503,6 +528,7 @@ func _connect_session(new_session: GameSession) -> void:
 	session = new_session
 	session.state_changed.connect(_on_session_state_changed)
 	session.log_line_received.connect(_append_log_line)
+	_game_start_sfx_played = false
 
 func _on_session_state_changed() -> void:
 	_advance_ui_after_state_change()
@@ -1088,6 +1114,8 @@ func _on_start_pressed() -> void:
 
 	is_network_mode = false
 	_connect_session(hot_seat)
+	_game_start_sfx_played = true
+	_play_sfx(GAME_START_SFX)
 
 	_clear_children(log_box)
 	selected_card_id = -1
@@ -1747,6 +1775,10 @@ func _advance_ui_after_state_change() -> void:
 	if state == null:
 		return
 
+	if is_network_mode and not _game_start_sfx_played:
+		_game_start_sfx_played = true
+		_play_sfx(GAME_START_SFX)
+
 	# Checked before game_over too: the winning attach IS a recipe
 	# completion, and the reveal should show before the victory screen,
 	# not instead of it -- "Continue" re-enters this function once the
@@ -1797,6 +1829,8 @@ func _advance_ui_after_state_change() -> void:
 func _invalidate_hotseat_turn_timer() -> void:
 	_hotseat_turn_timer_token += 1
 	_turn_timer_deadline_msec = -1
+	_timer_warning_played = false
+	timer_warning_player.stop()
 
 ## Starts (or restarts) the countdown for whoever can currently act. Called
 ## from two distinct places, both meaning "a human's turn just became
@@ -1856,7 +1890,6 @@ func _on_hotseat_turn_timer_expired(fired_token: int) -> void:
 	# equivalent online).
 	if state.phase == GameState.Phase.TAKE or state.phase == GameState.Phase.PLAY:
 		RulesEngine.skip_turn(state)
-		_play_sfx(TURN_TIMER_EXPIRED_SFX)
 		_append_log_line("(Turn timer expired) Player %d's turn was skipped" % (stalled_player + 1))
 		session.state_changed.emit()
 		return
