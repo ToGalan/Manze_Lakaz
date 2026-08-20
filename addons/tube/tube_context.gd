@@ -147,27 +147,59 @@ func is_session_id_valid(p_session_id: String) -> bool:
 	return 5 == p_session_id.length()
 
 
-## Validates if a peer ID hash is numeric and valid.
+## Validates if a peer ID hash is the right shape: exactly 20 numeric
+## characters. is_valid_int() alone is a format check, not a range check --
+## a 20-digit value comfortably exceeds int64, which is fine here since
+## get_peer_id() only ever parses the last 6 digits, never the full
+## string (see get_peer_id_hash() for why).
 func is_peer_id_hash_valid(p_peer_id_hash: String) -> bool:
-	return p_peer_id_hash.is_valid_int()
+	return 20 == p_peer_id_hash.length() and p_peer_id_hash.is_valid_int()
 
 ## Returns the combined "info hash" (app ID and session ID) for tracker usage.
 func get_info_hash(p_session_id: String) -> String:
 	if not is_session_id_valid(p_session_id):
 		printerr("Invalid session id")
 		return ""
-	
+
 	return app_id + p_session_id
 
 
-## Converts a integer peer ID hash into an peer ID hash for tracker usage.
-func get_peer_id_hash(p_peer_id: int) -> String:
-	return str(p_peer_id).pad_zeros(20)
+## Deterministically derives a 14-digit, non-zero-leading nonce from the
+## session id -- identical wherever it's computed (host or any joiner,
+## before or after any peer contact, since a joiner must already know the
+## session id to join at all) yet different between concurrent sessions.
+## Session ids are unique per session (5 characters from
+## session_id_characters_set, ~916 million combinations at the default
+## 62-character set), so this is what actually prevents two concurrent
+## hosts -- both always peer id 1 -- from colliding on the tracker; see
+## get_peer_id_hash().
+func _session_nonce(p_session_id: String) -> String:
+	var digest := p_session_id.sha256_text()
+	var value := ("0x" + digest.substr(0, 15)).hex_to_int()
+	return str(value % 90000000000000 + 10000000000000)
 
 
-## Converts a peer ID hash into an integer peer ID.
+## Converts an integer peer ID into a peer ID hash for tracker usage.
+##
+## The BitTorrent tracker protocol treats peer_id as a globally unique
+## identifier, but a Tube session host is always multiplayer peer id 1 (see
+## TubeClient._SERVER_PEER_ID) -- every host, on every device, used to
+## announce the exact same "00000000000000000001", which the tracker sees
+## as a collision: only one device could ever host at a time. The first 14
+## digits are now a per-session nonce (see _session_nonce()) and the last 6
+## are the peer id itself, zero-padded -- still exactly 20 numeric
+## characters, still fully self-contained (no coordination with the other
+## device needed), but no longer identical across different sessions.
+func get_peer_id_hash(p_peer_id: int, p_session_id: String) -> String:
+	return _session_nonce(p_session_id) + str(p_peer_id).pad_zeros(6)
+
+
+## Converts a peer ID hash into an integer peer ID. Reads only the last 6
+## digits, ignoring the session-nonce prefix entirely -- so this correctly
+## recovers the peer id from a hash minted by ANY device for this session,
+## not just the local one.
 func get_peer_id(p_peer_id_hash: String) -> int:
 	if not is_peer_id_hash_valid(p_peer_id_hash):
 		return 0
-	
-	return int(p_peer_id_hash)
+
+	return int(p_peer_id_hash.right(6))

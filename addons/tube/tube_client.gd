@@ -312,11 +312,11 @@ func _terminate_signaling():
 	if null != _local_signaling_peer:
 		_local_signaling_peer.close()
 		_local_signaling_peer = null
-	
+
 	for i_tracker in _trackers:
 		i_tracker.close(
 			context.get_info_hash(session_id),
-			context.get_peer_id_hash(peer_id)
+			context.get_peer_id_hash(peer_id, session_id)
 		)
 
 
@@ -331,9 +331,9 @@ func _terminate_session():
 	for i_tracker in _trackers:
 		i_tracker.close(
 			context.get_info_hash(session_id),
-			context.get_peer_id_hash(peer_id)
+			context.get_peer_id_hash(peer_id, session_id)
 		)
-	
+
 	for i_peer: TubePeer in _peers.values():
 		i_peer.close() # will be clean collected
 	
@@ -395,10 +395,10 @@ func _initiate_tracker(p_url: String) -> void:
 	)
 
 
-func _on_tracker_connected(p_tracker: TubeTracker): 
+func _on_tracker_connected(p_tracker: TubeTracker):
 	p_tracker.send_announce(
 		context.get_info_hash(session_id),
-		context.get_peer_id_hash(peer_id),
+		context.get_peer_id_hash(peer_id, session_id),
 	)
 	
 	if State.CREATING_SESSION == state:
@@ -576,7 +576,7 @@ func _handle_tracker_answer(data: Dictionary, p_tracker: TubeTracker):
 func _on_tracker_interval_timeout(p_tracker: TubeTracker):
 	p_tracker.send_announce(
 		context.get_info_hash(session_id),
-		context.get_peer_id_hash(peer_id),
+		context.get_peer_id_hash(peer_id, session_id),
 	)
 
 
@@ -604,8 +604,12 @@ func _send_signaling_data(p_peer: TubePeer, p_tracker: TubeTracker = null):
 			)
 	
 	var info_hash := context.get_info_hash(session_id)
-	var peer_id_hash := context.get_peer_id_hash(peer_id)
-	var to_peer_id_hash := context.get_peer_id_hash(p_peer.id)
+	var peer_id_hash := context.get_peer_id_hash(peer_id, session_id)
+	# Same session_id on both ends is exactly what makes this correct: the
+	# target peer independently derives the identical nonce for itself, so
+	# this matches what they actually announced even though we've never
+	# received anything from them yet (see get_peer_id_hash()).
+	var to_peer_id_hash := context.get_peer_id_hash(p_peer.id, session_id)
 	
 	var to_trackers = _trackers
 	if p_tracker:
