@@ -24,8 +24,10 @@ const STEAL_ICON_SPACING := 14.0
 ## growing one unbroken HBoxContainer row wider and wider -- wide enough to
 ## break top_bar's layout. Above this many cards a row switches to pages
 ## of this size instead, with Prev/Next controls; at or below it, nothing
-## changes (a single page, no controls shown).
-const CARDS_PER_PAGE := 9
+## changes (a single page, no controls shown). Lowered from 9: a single
+## unbroken row of 8 was already wide enough to break the layout, so
+## pagination now has to kick in one card sooner.
+const CARDS_PER_PAGE := 7
 
 const AVATAR_COLORS := [
 	Color8(224, 122, 95), Color8(129, 178, 154), Color8(230, 183, 88), Color8(129, 161, 193),

@@ -53,7 +53,14 @@ func _layout() -> void:
 	if n == 0 or size.x <= 0.0 or size.y <= 0.0:
 		return
 
-	var card_h: float = clamp(size.y * 0.82, 90.0, 190.0)
+	# Ceiling raised to 1.5x (190 -> 285 would be the naive math, but see
+	# GameScreen._on_screen_resized(): only its own ceiling moved, 160 to
+	# 240, so this control's own size.y only ever grows on a window with
+	# real spare height to give -- 240 * 0.82 = ~197, so 200 covers it with
+	# a little slack). Floor (90) is untouched on purpose: a short window's
+	# size.y lands well under it regardless, and that's the exact regime
+	# where the tallest recipe panel is already fighting for room.
+	var card_h: float = clamp(size.y * 0.82, 90.0, 200.0)
 	var card_w := card_h * 0.68
 	var max_spread_deg: float = clamp(4.0 * n, 8.0, 28.0)
 

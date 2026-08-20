@@ -129,16 +129,28 @@ var turn_timer_label: Label
 ## actions (hot-seat covers both players since they share one device;
 ## online only plays for the acting client, not for opponents watching a
 ## snapshot arrive -- there's no typed "an action just happened" signal
-## broadcast to observers to hook, only the log line's text).
+## broadcast to observers to hook, only the log line's text). DRAFT_KEEP is
+## deliberately absent -- see DRAFT_KEEP_SFX below, which plays once for
+## the whole draft instead of once per pick.
 const ACTION_SFX := {
-	Action.Type.DRAFT_KEEP: preload("res://sfx/zapsplat_leisure_playing_cards_flick_through_shuffle_007_62510.mp3"),
 	Action.Type.DRAW: preload("res://sfx/423769__someonecool15__playing-cards-being-delt.mp3"),
 	Action.Type.STEAL: preload("res://sfx/448995__qubodup__yoink-stealing-sound-effect.wav"), # Godot can't import the source .flac directly; converted to .wav once, see the file alongside it
 	Action.Type.ATTACH: preload("res://sfx/740218__simeonradivoev__sci-fi-robotic-attachment.mp3"),
 	Action.Type.DISCARD: preload("res://sfx/zapsplat_leisure_trading_or_playing_card_shuffle_002_77303.mp3"),
 	Action.Type.TAKE_DISCARD: preload("res://sfx/zapsplat_leisure_trading_card_or_playing_card_shuffle_turn_over_single_001_68322.mp3"),
-	Action.Type.MOVE_PREPARATION: preload("res://sfx/747805__hope_sounds_3__countingplayingcards.wav"),
 }
+
+## A single "shuffling the deck" cue for the whole draft, not one per pick
+## (recipes_per_player picks, times every player) -- played on the first
+## DRAFT_KEEP of a new game only.
+const DRAFT_KEEP_SFX := preload("res://sfx/zapsplat_leisure_playing_cards_flick_through_shuffle_007_62510.mp3")
+var _draft_keep_sfx_played: bool = false
+
+## "Dealing everyone their recipe offers" -- played once when the draft
+## screen is first shown for a new game (see _show_draft()), not tied to
+## MOVE_PREPARATION at all despite the clip's filename.
+const DRAFT_BEGIN_SFX := preload("res://sfx/747805__hope_sounds_3__countingplayingcards.wav")
+var _draft_begin_sfx_played: bool = false
 ## Only the last TURN_TIMER_WARNING_SECONDS of this clip are ever heard --
 ## see the countdown-crossing check in _process() -- so it plays as a
 ## ticking/ringing alarm that builds tension right up to 0, rather than the
@@ -205,8 +217,8 @@ func _ready() -> void:
 		DATA_DIR + "/recipes.json"
 	)
 
+	_ensure_audio_buses() # must exist before _build_static_ui() creates AudioStreamPlayers routed to them (music_player starts playing immediately)
 	_build_static_ui()
-	_ensure_audio_buses()
 	_load_settings()
 
 	# Connected once, persistently: NetworkPeer is an autoload that outlives
@@ -412,7 +424,16 @@ func _on_screen_resized() -> void:
 	# 100-150) is deliberately taken back from the board -- it funds
 	# HandFan's own bottom padding (see HandFan._layout()) so cards don't
 	# sit flush against, or spill past, the row's bottom edge.
-	hand_fan.custom_minimum_size.y = clampf(size.y * 0.18, 110.0, 160.0)
+	# Requested cards ~1.5x bigger. The floor (110) and multiplier (0.18) are
+	# untouched -- at a short/small window they already land well under even
+	# the OLD ceiling (720p gives ~130px), and that's the exact regime where
+	# the tallest recipe (Awaze Tibs, 13 slots) is already fighting for room
+	# against a table that never scrolls (see TableSurface._init()) -- any
+	# growth there overflows its panel. Only the ceiling moves, from 160 to
+	# 240 (1.5x): a window with real spare height (roughly 900px+) now scales
+	# hand_fan, and so HandFan's own card size, meaningfully bigger, while a
+	# tight window keeps exactly the size that was already verified to fit.
+	hand_fan.custom_minimum_size.y = clampf(size.y * 0.18, 110.0, 240.0)
 	prompt_panel.custom_minimum_size.y = clampf(size.y * 0.09, 48.0, 64.0)
 	log_panel.custom_minimum_size.x = clampf(size.x * 0.22, 160.0, 320.0)
 
@@ -529,16 +550,30 @@ func _connect_session(new_session: GameSession) -> void:
 	session.state_changed.connect(_on_session_state_changed)
 	session.log_line_received.connect(_append_log_line)
 	_game_start_sfx_played = false
+	_draft_keep_sfx_played = false
+	_draft_begin_sfx_played = false
 
 func _on_session_state_changed() -> void:
 	_advance_ui_after_state_change()
 
 func _submit_action(action: Action) -> void:
-	_play_sfx(ACTION_SFX.get(action.type))
+	if action.type == Action.Type.DRAFT_KEEP:
+		if not _draft_keep_sfx_played:
+			_draft_keep_sfx_played = true
+			_play_sfx(DRAFT_KEEP_SFX)
+	else:
+		_play_sfx(ACTION_SFX.get(action.type))
 	session.submit_action(action)
 
+## Skips a retrigger while the exact same clip is still playing, so a rapid
+## repeat of the same cue (e.g. an online click landing again before the
+## server's confirming snapshot disables the button) can't sound like it
+## fired twice. A genuinely different cue interrupts and plays immediately,
+## same as before.
 func _play_sfx(stream: AudioStream) -> void:
 	if stream == null:
+		return
+	if sfx_player.playing and sfx_player.stream == stream:
 		return
 	sfx_player.stream = stream
 	sfx_player.play()
@@ -2053,11 +2088,9 @@ func _show_ai_thinking() -> void:
 	_clear_children(ai_thinking_overlay)
 	var box := _overlay_content_box(ai_thinking_overlay)
 
-	var hot_seat := session as LocalHotSeatSession
-	var difficulty: int = hot_seat.seat_difficulty.get(state.current_player_index, AiBot.Difficulty.MEDIUM)
 	var label := Label.new()
 	label.theme_type_variation = "TitleLabel"
-	label.text = "Player %d (%s AI) is thinking..." % [state.current_player_index + 1, AiBot.DIFFICULTY_NAMES[difficulty]]
+	label.text = "Player %d is thinking..." % (state.current_player_index + 1)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(label)
 
@@ -2142,6 +2175,9 @@ func _on_pass_device_ready_pressed() -> void:
 
 func _show_draft() -> void:
 	ui_mode = UiMode.DRAFT
+	if not _draft_begin_sfx_played:
+		_draft_begin_sfx_played = true
+		_play_sfx(DRAFT_BEGIN_SFX)
 	_clear_children(draft_overlay)
 	var box := _overlay_content_box(draft_overlay)
 
