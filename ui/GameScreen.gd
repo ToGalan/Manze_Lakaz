@@ -158,6 +158,16 @@ var _draft_begin_sfx_played: bool = false
 var sfx_player: AudioStreamPlayer
 var _sfx_play_token: int = 0 # invalidates a pending max-duration auto-stop once a different sound has since started (see _play_sfx())
 
+## Only the last TURN_TIMER_WARNING_SECONDS of this clip are ever heard --
+## see the countdown-crossing check in _process() -- so it plays as a
+## single ticking/ringing alarm that builds tension right up to 0, once per
+## turn (guarded by _timer_warning_played), instead of the whole ~87s file
+## dumped out in full the moment a turn actually expires.
+const TURN_TIMER_WARNING_SFX := preload("res://sfx/47838__delphidebrain__delphis-double-egg-timer.wav")
+const TURN_TIMER_WARNING_SECONDS := 10.0
+var _timer_warning_played: bool = false
+var timer_warning_player: AudioStreamPlayer
+
 ## Played once from _on_start_pressed() (hot-seat) or the first snapshot a
 ## network client ever receives (see _advance_ui_after_state_change()) --
 ## "lighting the stove" to mark a brand new game actually starting, not
@@ -171,6 +181,17 @@ var _game_start_sfx_played: bool = false
 ## only one track, so nothing has to pick when to start/stop/switch it.
 const MUSIC_STREAM: AudioStreamWAV = preload("res://sfx/595860__szegvari__africa-safari-love-world-ethnic-modern-soundtrack-music-drum-flute-piano-snare-contemporary-eq-mastered_BG.wav")
 var music_player: AudioStreamPlayer
+
+## Layered on top of the main track (which ducks by MUSIC_DUCK_VOLUME_DB)
+## the first time ANY player's recipe has a preparation card attached --
+## driven by game state (see _check_prep_ambience()), not by this device's
+## own submitted actions, so it starts the same way for every player at the
+## table regardless of who actually cooked first. Loops for the rest of
+## the game; _connect_session() resets it for a new one.
+const FRYING_AMBIENCE_SFX: AudioStreamWAV = preload("res://sfx/426870__katfolker__frying-food.wav")
+const MUSIC_DUCK_VOLUME_DB := -10.0
+var ambience_player: AudioStreamPlayer
+var _prep_ambience_started: bool = false
 
 # Static structure, built once in _ready().
 var main_layout: VBoxContainer
@@ -244,6 +265,11 @@ func _process(_delta: float) -> void:
 	turn_timer_badge.visible = true
 	turn_timer_label.text = "Turn ends in %d:%02d" % [remaining_seconds / 60, remaining_seconds % 60]
 
+	if not _timer_warning_played and remaining_ms <= int(TURN_TIMER_WARNING_SECONDS * 1000.0):
+		_timer_warning_played = true
+		timer_warning_player.stream = TURN_TIMER_WARNING_SFX
+		timer_warning_player.play(maxf(0.0, TURN_TIMER_WARNING_SFX.get_length() - TURN_TIMER_WARNING_SECONDS))
+
 # ===========================================================================
 # Static UI construction (built once)
 # ===========================================================================
@@ -260,6 +286,10 @@ func _build_static_ui() -> void:
 	sfx_player.bus = "SFX"
 	add_child(sfx_player)
 
+	timer_warning_player = AudioStreamPlayer.new()
+	timer_warning_player.bus = "SFX"
+	add_child(timer_warning_player)
+
 	var music_stream: AudioStreamWAV = MUSIC_STREAM
 	music_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	music_player = AudioStreamPlayer.new()
@@ -267,6 +297,13 @@ func _build_static_ui() -> void:
 	music_player.stream = music_stream
 	add_child(music_player)
 	music_player.play()
+
+	var ambience_stream: AudioStreamWAV = FRYING_AMBIENCE_SFX
+	ambience_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	ambience_player = AudioStreamPlayer.new()
+	ambience_player.bus = "Music"
+	ambience_player.stream = ambience_stream
+	add_child(ambience_player)
 
 	var outer_margin := MarginContainer.new()
 	outer_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -406,22 +443,21 @@ func _on_screen_resized() -> void:
 	# hand_fan's range is trimmed from the original (110-190 @ 0.24) since
 	# the table no longer scrolls (see TableSurface._init()) -- the board
 	# needs to keep enough of the remaining height for the tallest recipe
-	# panel (a Feast dish's 9 rows) to fit without it, so hand_fan gives up
-	# some of its own share; cards still read fine smaller (HandFan's own
-	# card_h derives from this same height). The +10 here (110-160, not
-	# 100-150) is deliberately taken back from the board -- it funds
-	# HandFan's own bottom padding (see HandFan._layout()) so cards don't
-	# sit flush against, or spill past, the row's bottom edge.
-	# Requested cards ~1.5x bigger. The floor (110) and multiplier (0.18) are
-	# untouched -- at a short/small window they already land well under even
-	# the OLD ceiling (720p gives ~130px), and that's the exact regime where
-	# the tallest recipe (Awaze Tibs, 13 slots) is already fighting for room
-	# against a table that never scrolls (see TableSurface._init()) -- any
-	# growth there overflows its panel. Only the ceiling moves, from 160 to
-	# 240 (1.5x): a window with real spare height (roughly 900px+) now scales
-	# hand_fan, and so HandFan's own card size, meaningfully bigger, while a
-	# tight window keeps exactly the size that was already verified to fit.
-	hand_fan.custom_minimum_size.y = clampf(size.y * 0.18, 110.0, 240.0)
+	# panel to fit without it, so hand_fan gives up some of its own share;
+	# cards still read fine smaller (HandFan's own card_h derives from this
+	# same height). The +10 here (110-160, not 100-150) is deliberately
+	# taken back from the board -- it funds HandFan's own bottom padding
+	# (see HandFan._layout()) so cards don't sit flush against, or spill
+	# past, the row's bottom edge.
+	# Cards ~1.5x bigger: floor, ceiling, and multiplier all scaled up
+	# (110-160 -> 165-240). A first attempt only raised the ceiling, to
+	# avoid an oversized recipe panel spilling past the table -- but that
+	# meant a 1280x720 window (this project's own default size) landed
+	# exactly on the untouched floor, with no visible growth at all. Now
+	# safe to scale uniformly: the tallest recipe's slot grid scrolls
+	# instead of overflowing once it doesn't fit (see the ScrollContainer
+	# in _build_own_recipe_panel()).
+	hand_fan.custom_minimum_size.y = clampf(size.y * 0.27, 165.0, 240.0)
 	prompt_panel.custom_minimum_size.y = clampf(size.y * 0.09, 48.0, 64.0)
 	log_panel.custom_minimum_size.x = clampf(size.x * 0.22, 160.0, 320.0)
 
@@ -540,6 +576,9 @@ func _connect_session(new_session: GameSession) -> void:
 	_game_start_sfx_played = false
 	_draft_keep_sfx_played = false
 	_draft_begin_sfx_played = false
+	_prep_ambience_started = false
+	ambience_player.stop()
+	music_player.volume_db = 0.0
 
 func _on_session_state_changed() -> void:
 	_advance_ui_after_state_change()
@@ -581,6 +620,21 @@ func _play_sfx(stream: AudioStream, max_seconds: float = 0.0) -> void:
 			if _sfx_play_token == token:
 				sfx_player.stop()
 		)
+
+## Attached cards (preparations included) are always public information --
+## the whole steal mechanic depends on every player seeing what's attached
+## to every recipe -- so this is safe to check directly off state.players
+## even for a network client's own shadow state, not just the local hand.
+func _check_prep_ambience() -> void:
+	if _prep_ambience_started:
+		return
+	for p in state.players:
+		for recipe in p.recipes:
+			if not recipe.filled_preparations.is_empty():
+				_prep_ambience_started = true
+				music_player.volume_db = MUSIC_DUCK_VOLUME_DB
+				ambience_player.play()
+				return
 
 func _viewer_index() -> int:
 	return session.viewer_index()
@@ -1818,6 +1872,8 @@ func _advance_ui_after_state_change() -> void:
 		_game_start_sfx_played = true
 		_play_sfx(GAME_START_SFX)
 
+	_check_prep_ambience()
+
 	# Checked before game_over too: the winning attach IS a recipe
 	# completion, and the reveal should show before the victory screen,
 	# not instead of it -- "Continue" re-enters this function once the
@@ -1868,6 +1924,8 @@ func _advance_ui_after_state_change() -> void:
 func _invalidate_hotseat_turn_timer() -> void:
 	_hotseat_turn_timer_token += 1
 	_turn_timer_deadline_msec = -1
+	_timer_warning_played = false
+	timer_warning_player.stop()
 
 ## Starts (or restarts) the countdown for whoever can currently act. Called
 ## from two distinct places, both meaning "a human's turn just became
@@ -2328,6 +2386,7 @@ func _render_table(legal: Array) -> void:
 		top_discard = {
 			"label": GameViewModel.card_label(top.def_id, top.category, db),
 			"category_key": CardCategoryMap.category_for(top.def_id, top.category),
+			"def_id": top.def_id,
 		}
 	var discard_takeable := _has_action_type(legal, Action.Type.TAKE_DISCARD)
 	table_surface.update_piles(state.deck.size(), state.discard_pile.size(), top_discard, discard_takeable)
@@ -2352,6 +2411,14 @@ const RECIPE_SLOT_H_SEPARATION := 8.0
 ## shorter than its actual rendered content, spilling text past its own
 ## drawn border.
 const RECIPE_SLOT_COLUMN_WIDTH := (RECIPE_PANEL_WIDTH - RECIPE_PANEL_PADDING - RECIPE_SLOT_H_SEPARATION) / RECIPE_SLOT_COLUMNS
+## A rough per-row budget (label height + v_separation), used only to decide
+## whether a recipe's slot grid needs to scroll -- see the ScrollContainer
+## in _build_own_recipe_panel(). Doesn't need to be exact: an ordinary
+## recipe sits well under RECIPE_GRID_MAX_HEIGHT either way, and a slight
+## overestimate on an edge case just means it scrolls a little sooner than
+## strictly necessary, never later.
+const RECIPE_SLOT_ROW_HEIGHT_ESTIMATE := 25.0
+const RECIPE_GRID_MAX_HEIGHT := 170.0
 
 func _build_own_recipe_panel(recipe: Recipe, ri: int, legal: Array) -> Control:
 	var outer := PanelContainer.new()
@@ -2413,7 +2480,24 @@ func _build_own_recipe_panel(recipe: Recipe, ri: int, legal: Array) -> Control:
 	grid.columns = RECIPE_SLOT_COLUMNS
 	grid.add_theme_constant_override("h_separation", int(RECIPE_SLOT_H_SEPARATION))
 	grid.add_theme_constant_override("v_separation", 2)
-	box.add_child(grid)
+
+	# A safety net, not the normal case: an ordinary recipe's grid sits well
+	# under RECIPE_GRID_MAX_HEIGHT and this ScrollContainer just holds it at
+	# its natural size, no visible scrollbar. Only a genuinely oversized
+	# recipe (Awaze Tibs' 13 slots is the current worst case) hits the cap
+	# and scrolls -- containment instead of the panel spilling past the
+	# table's felt edge and overlapping the prompt bar below it, which is
+	# what happened before this existed (see hand_fan's own 1.5x size
+	# increase in _on_screen_resized() for why there's less slack than
+	# there used to be).
+	var grid_scroll := ScrollContainer.new()
+	grid_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	grid_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	var slots := GameViewModel.own_recipe_slots(recipe, db)
+	var estimated_rows := ceili(slots.size() / float(RECIPE_SLOT_COLUMNS))
+	grid_scroll.custom_minimum_size.y = minf(estimated_rows * RECIPE_SLOT_ROW_HEIGHT_ESTIMATE, RECIPE_GRID_MAX_HEIGHT)
+	box.add_child(grid_scroll)
+	grid_scroll.add_child(grid)
 
 	# A filled preparation slot is its own click target (to pick it up for
 	# MOVE_PREPARATION) whenever this whole panel isn't already a click
@@ -2421,7 +2505,7 @@ func _build_own_recipe_panel(recipe: Recipe, ri: int, legal: Array) -> Control:
 	# inside another would be ambiguous) and no hand card is currently
 	# selected.
 	var preps_selectable := attach_action == null and move_action == null and selected_card_id == -1 and not recipe.completed
-	for slot in GameViewModel.own_recipe_slots(recipe, db):
+	for slot in slots:
 		if preps_selectable and not slot["is_ingredient"] and slot["filled"] and slot["card_instance_id"] != -1:
 			var prep_card_id: int = slot["card_instance_id"]
 			var row_btn := Button.new()

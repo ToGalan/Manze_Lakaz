@@ -111,8 +111,8 @@ func _build_pile(title: String) -> PanelContainer:
 
 	return panel
 
-## discard_top: {label, category_key} describing the discard pile's top
-## card, or an empty Dictionary if the pile is empty. discard_takeable:
+## discard_top: {label, category_key, def_id} describing the discard pile's
+## top card, or an empty Dictionary if the pile is empty. discard_takeable:
 ## whether TAKE_DISCARD is currently a legal action for the acting player.
 func update_piles(deck_count: int, discard_count: int, discard_top: Dictionary, discard_takeable: bool) -> void:
 	_deck_count_label.text = "%d cards" % deck_count
@@ -121,7 +121,7 @@ func update_piles(deck_count: int, discard_count: int, discard_top: Dictionary, 
 		_discard_card.set_face_down()
 		_discard_card.disabled = true
 	else:
-		_discard_card.setup(discard_top["label"], discard_top["category_key"])
+		_discard_card.setup(discard_top["label"], discard_top["category_key"], -1, discard_top["def_id"])
 		_discard_card.disabled = not discard_takeable
 
 func get_deck_marker_global_position() -> Vector2:
