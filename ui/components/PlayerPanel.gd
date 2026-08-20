@@ -47,9 +47,17 @@ func _init() -> void:
 	# Small enough that top_bar's HFlowContainer can still fit 2+ per row
 	# on a narrow/mobile viewport instead of stacking every seat into its
 	# own full-width row; SIZE_EXPAND_FILL still lets it grow to fill
-	# whatever room a wider window actually has.
+	# whatever room a wider window actually has -- but nothing here should
+	# ever grow the panel wider than that: the mini-card row layout (see
+	# _build_mini_card_row()) computes its own overlap/scale from the
+	# width it's actually given, it never reports a content-driven minimum
+	# size back up the tree the way the old per-card HBoxContainer did.
+	# clip_contents is a backstop, not the fix -- if the layout above is
+	# ever wrong this hides the symptom instead of the cause, so don't
+	# lean on it.
 	custom_minimum_size = Vector2(150, 0)
 	size_flags_horizontal = SIZE_EXPAND_FILL
+	clip_contents = true
 
 	var content := VBoxContainer.new()
 	add_child(content)
@@ -167,39 +175,116 @@ func update(seat_index: int, hand_count: int, recipes_completed: int, recipes_to
 		var recipe_index: int = row["recipe_index"]
 		var cards: Array = row["cards"]
 
-		var row_box := HBoxContainer.new()
-		row_box.theme_type_variation = "TightHBox"
-		_chips_col.add_child(row_box)
-
 		if cards.is_empty():
+			var none_row := HBoxContainer.new()
+			none_row.theme_type_variation = "TightHBox"
+			_chips_col.add_child(none_row)
 			var none_label := Label.new()
 			none_label.theme_type_variation = "MiniChipLabel"
 			none_label.text = "(no cards attached)"
-			row_box.add_child(none_label)
+			none_row.add_child(none_label)
 			continue
 
-		var total_pages := ceili(float(cards.size()) / CARDS_PER_PAGE)
+		# Stealable cards first (stable partition -- relative order within
+		# each group is untouched) so page 1 always holds as many of them
+		# as it can. These mini cards ARE the steal targets; a stealable
+		# card sitting on an unviewed page is functionally a card that
+		# doesn't exist, so it must never be the one pagination buries.
+		var sorted_cards: Array = []
+		var _others: Array = []
+		for c in cards:
+			if c["stealable"]:
+				sorted_cards.append(c)
+			else:
+				_others.append(c)
+		sorted_cards.append_array(_others)
+
+		var total_pages := ceili(float(sorted_cards.size()) / CARDS_PER_PAGE)
 		var page: int = clampi(row.get("page", 0), 0, total_pages - 1)
 		var start := page * CARDS_PER_PAGE
-		var end := mini(start + CARDS_PER_PAGE, cards.size())
-		for i in range(start, end):
-			_build_mini_card(row_box, recipe_index, cards[i])
+		var end := mini(start + CARDS_PER_PAGE, sorted_cards.size())
+
+		_build_mini_card_row(recipe_index, sorted_cards.slice(start, end))
 
 		if total_pages > 1:
-			_build_page_nav(recipe_index, page, total_pages)
+			var stealable_before := 0
+			for i in start:
+				if sorted_cards[i]["stealable"]:
+					stealable_before += 1
+			var stealable_after := 0
+			for i in range(end, sorted_cards.size()):
+				if sorted_cards[i]["stealable"]:
+					stealable_after += 1
+			_build_page_nav(recipe_index, page, total_pages, stealable_before, stealable_after)
 
-func _build_page_nav(recipe_index: int, page: int, total_pages: int) -> void:
+## A plain Control, not an HBoxContainer: children positioned by hand (see
+## _layout_mini_card_row()) so this row's own reported width is never
+## driven by its content the way a Box container's would be -- it only
+## ever takes whatever width the panel actually has, and lays the (up to
+## CARDS_PER_PAGE) cards out to fit that, overlapped and/or shrunk as
+## needed. Every card stays a real, clickable node regardless of overlap;
+## nothing here is hidden or skipped, only repositioned/rescaled.
+func _build_mini_card_row(recipe_index: int, page_cards: Array) -> void:
+	var row := Control.new()
+	row.custom_minimum_size = Vector2(0, MINI_CARD_SIZE.y)
+	row.size_flags_horizontal = SIZE_EXPAND_FILL
+	row.clip_contents = true
+	_chips_col.add_child(row)
+
+	var faces: Array = []
+	for card_data in page_cards:
+		faces.append(_build_mini_card(row, recipe_index, card_data))
+
+	# size.x is still 0 here -- this row was only just added and hasn't
+	# been through a layout pass yet. The resized signal (same pattern as
+	# HandFan._init()) fires once the real width is known and lays it out
+	# for real; this call is just so a row that happens to already have a
+	# nonzero size (e.g. the panel itself didn't change width on this
+	# update) still ends up laid out instead of waiting on a resize that
+	# may never come.
+	row.resized.connect(_layout_mini_card_row.bind(row, faces))
+	_layout_mini_card_row(row, faces)
+
+## Overlaps cards leftward (each later card shifted right, drawn on top of
+## the one before it, like a fanned stack) computed from the row's actual
+## available width -- never a hardcoded offset. Falls back to shrinking the
+## card size itself once even the tightest readable overlap wouldn't fit
+## CARDS_PER_PAGE of them (a narrow/portrait viewport with a full 8-card
+## page).
+func _layout_mini_card_row(row: Control, faces: Array) -> void:
+	var n := faces.size()
+	if n == 0 or row.size.x <= 0.0:
+		return
+
+	var card_w := MINI_CARD_SIZE.x
+	var card_h := MINI_CARD_SIZE.y
+	const MIN_OVERLAP_FRACTION := 0.35 # at least this much of each card stays visible/clickable
+	var min_overlap_step := card_w * MIN_OVERLAP_FRACTION
+	var needed_min_width := card_w + min_overlap_step * float(n - 1)
+	if needed_min_width > row.size.x:
+		var shrink := clampf(row.size.x / needed_min_width, 0.5, 1.0)
+		card_w *= shrink
+		card_h *= shrink
+
+	var overlap_step: float
+	if n > 1:
+		overlap_step = minf(card_w, (row.size.x - card_w) / float(n - 1))
+		overlap_step = maxf(overlap_step, card_w * MIN_OVERLAP_FRACTION)
+	else:
+		overlap_step = 0.0
+
+	for i in n:
+		var control: Control = faces[i]
+		control.size = Vector2(card_w, card_h)
+		control.position = Vector2(i * overlap_step, 0)
+		control.z_index = i # later (more recently attached) cards drawn on top
+
+func _build_page_nav(recipe_index: int, page: int, total_pages: int, stealable_before: int, stealable_after: int) -> void:
 	var nav_row := HBoxContainer.new()
 	nav_row.theme_type_variation = "TightHBox"
 	_chips_col.add_child(nav_row)
 
-	var prev_btn := Button.new()
-	prev_btn.theme_type_variation = "PageNavButton"
-	prev_btn.text = "<"
-	prev_btn.custom_minimum_size = Vector2(18, 0)
-	prev_btn.disabled = page == 0
-	prev_btn.pressed.connect(_on_page_nav_pressed.bind(recipe_index, page - 1))
-	nav_row.add_child(prev_btn)
+	nav_row.add_child(_build_page_nav_button("<", stealable_before, page == 0, _on_page_nav_pressed.bind(recipe_index, page - 1)))
 
 	var page_label := Label.new()
 	page_label.theme_type_variation = "MiniChipLabel"
@@ -207,13 +292,28 @@ func _build_page_nav(recipe_index: int, page: int, total_pages: int) -> void:
 	page_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	nav_row.add_child(page_label)
 
-	var next_btn := Button.new()
-	next_btn.theme_type_variation = "PageNavButton"
-	next_btn.text = ">"
-	next_btn.custom_minimum_size = Vector2(18, 0)
-	next_btn.disabled = page == total_pages - 1
-	next_btn.pressed.connect(_on_page_nav_pressed.bind(recipe_index, page + 1))
-	nav_row.add_child(next_btn)
+	nav_row.add_child(_build_page_nav_button(">", stealable_after, page == total_pages - 1, _on_page_nav_pressed.bind(recipe_index, page + 1)))
+
+## hidden_stealable_count: how many stealable cards sit on the page this
+## button would flip to -- ">3" instead of ">" -- so a page control never
+## just silently sits next to hidden steal targets; it reads as "there are
+## steal targets over here" via the same StealTargetHighlight frame the
+## mini cards themselves use when stealable.
+func _build_page_nav_button(arrow: String, hidden_stealable_count: int, is_disabled: bool, on_pressed: Callable) -> Control:
+	var btn := Button.new()
+	btn.theme_type_variation = "PageNavButton"
+	btn.text = arrow if hidden_stealable_count == 0 else "%s%d" % [arrow, hidden_stealable_count]
+	btn.custom_minimum_size = Vector2(18, 0)
+	btn.disabled = is_disabled
+	btn.pressed.connect(on_pressed)
+
+	if hidden_stealable_count == 0:
+		return btn
+
+	var frame := PanelContainer.new()
+	frame.theme_type_variation = "StealTargetHighlight"
+	frame.add_child(btn)
+	return frame
 
 func _on_page_nav_pressed(recipe_index: int, new_page: int) -> void:
 	page_changed.emit(_seat_index, recipe_index, new_page)
@@ -221,24 +321,38 @@ func _on_page_nav_pressed(recipe_index: int, new_page: int) -> void:
 ## CardFace's @onready fields only resolve once it's actually in the tree,
 ## so it must be add_child()-ed before setup() is called -- build directly
 ## into the destination parent rather than returning a detached node.
-func _build_mini_card(parent: Node, recipe_index: int, card_data: Dictionary) -> void:
+## Returns the control _layout_mini_card_row() should actually position and
+## resize -- the glow frame when stealable (PanelContainer auto-resizes its
+## child to fit whenever the frame's own rect changes, container or not),
+## the bare CardFace otherwise.
+func _build_mini_card(parent: Node, recipe_index: int, card_data: Dictionary) -> Control:
 	var face: CardFace = CARD_SCENE.instantiate()
 	var stealable: bool = card_data["stealable"]
 
+	# custom_minimum_size left at (0, 0), not MINI_CARD_SIZE: Control clamps
+	# an assigned .size up to its own minimum, which would silently defeat
+	# _layout_mini_card_row()'s shrink-to-fit fallback the moment it tries
+	# to size a card below MINI_CARD_SIZE. All real sizing happens there
+	# instead, on the outer control (the frame's own PanelContainer sorting
+	# resizes face to fit whenever the frame's rect changes); .size here is
+	# only a sane placeholder before that first layout pass runs.
+	var outer: Control = face
 	if stealable:
 		var frame := PanelContainer.new()
 		frame.theme_type_variation = "StealTargetHighlight"
 		parent.add_child(frame)
 		frame.add_child(face)
+		outer = frame
 	else:
 		parent.add_child(face)
 
-	face.custom_minimum_size = MINI_CARD_SIZE
 	face.size = MINI_CARD_SIZE
 	face.setup(card_data["label"], card_data["category_key"], card_data["card_instance_id"], card_data["def_id"])
 	face.disabled = not stealable
 	if stealable:
 		face.pressed.connect(_on_mini_card_pressed.bind(recipe_index, card_data["card_instance_id"]))
+
+	return outer
 
 func _on_mini_card_pressed(recipe_index: int, card_instance_id: int) -> void:
 	steal_requested.emit(_seat_index, recipe_index, card_instance_id)
