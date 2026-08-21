@@ -564,10 +564,12 @@ func _on_screen_resized() -> void:
 	# first attempt only raised the ceiling, to avoid an oversized recipe
 	# panel spilling past the table -- but that meant a 1280x720 window
 	# (this project's own default size) landed exactly on the untouched
-	# floor, with no visible growth at all. Safe to scale uniformly now
-	# that the tallest recipe's slot grid scrolls instead of overflowing
-	# once it doesn't fit (see the ScrollContainer in
-	# _build_own_recipe_panel()).
+	# floor, with no visible growth at all. Scaled uniformly regardless:
+	# _build_own_recipe_panel()'s slot grid no longer scrolls (removed by
+	# request), so a genuinely oversized recipe (Awaze Tibs' 13 slots is
+	# the current worst case) can again spill its panel past the table's
+	# felt edge on a short viewport -- a known, accepted tradeoff, not an
+	# oversight.
 	hand_fan.custom_minimum_size.y = clampf(size.y * 0.27, 165.0, 240.0)
 	prompt_panel.custom_minimum_size.y = clampf(size.y * 0.09, 48.0, 64.0)
 	log_panel.custom_minimum_size.x = clampf(size.x * 0.22, 160.0, 320.0)
@@ -2582,14 +2584,6 @@ const RECIPE_SLOT_H_SEPARATION := 8.0
 ## shorter than its actual rendered content, spilling text past its own
 ## drawn border.
 const RECIPE_SLOT_COLUMN_WIDTH := (RECIPE_PANEL_WIDTH - RECIPE_PANEL_PADDING - RECIPE_SLOT_H_SEPARATION) / RECIPE_SLOT_COLUMNS
-## A rough per-row budget (label height + v_separation), used only to decide
-## whether a recipe's slot grid needs to scroll -- see the ScrollContainer
-## in _build_own_recipe_panel(). Doesn't need to be exact: an ordinary
-## recipe sits well under RECIPE_GRID_MAX_HEIGHT either way, and a slight
-## overestimate on an edge case just means it scrolls a little sooner than
-## strictly necessary, never later.
-const RECIPE_SLOT_ROW_HEIGHT_ESTIMATE := 25.0
-const RECIPE_GRID_MAX_HEIGHT := 170.0
 
 func _build_own_recipe_panel(recipe: Recipe, ri: int, legal: Array) -> Control:
 	var outer := PanelContainer.new()
@@ -2652,23 +2646,8 @@ func _build_own_recipe_panel(recipe: Recipe, ri: int, legal: Array) -> Control:
 	grid.add_theme_constant_override("h_separation", int(RECIPE_SLOT_H_SEPARATION))
 	grid.add_theme_constant_override("v_separation", 2)
 
-	# A safety net, not the normal case: an ordinary recipe's grid sits well
-	# under RECIPE_GRID_MAX_HEIGHT and this ScrollContainer just holds it at
-	# its natural size, no visible scrollbar. Only a genuinely oversized
-	# recipe (Awaze Tibs' 13 slots is the current worst case) hits the cap
-	# and scrolls -- containment instead of the panel spilling past the
-	# table's felt edge and overlapping the prompt bar below it, which is
-	# what happened before this existed (see hand_fan's own 1.5x size
-	# increase in _on_screen_resized() for why there's less slack than
-	# there used to be).
-	var grid_scroll := ScrollContainer.new()
-	grid_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	grid_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	var slots := GameViewModel.own_recipe_slots(recipe, db)
-	var estimated_rows := ceili(slots.size() / float(RECIPE_SLOT_COLUMNS))
-	grid_scroll.custom_minimum_size.y = minf(estimated_rows * RECIPE_SLOT_ROW_HEIGHT_ESTIMATE, RECIPE_GRID_MAX_HEIGHT)
-	box.add_child(grid_scroll)
-	grid_scroll.add_child(grid)
+	box.add_child(grid)
 
 	# A filled preparation slot is its own click target (to pick it up for
 	# MOVE_PREPARATION) whenever this whole panel isn't already a click
