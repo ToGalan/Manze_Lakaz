@@ -1,0 +1,14 @@
+{
+  "name": "manze-lakaz-signal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node test/protocol.test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^3.114.17",
+    "ws": "^8.21.3"
+  }
+}

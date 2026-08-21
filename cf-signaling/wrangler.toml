@@ -1,0 +1,21 @@
+name = "manze-lakaz-signal"
+main = "src/worker.js"
+compatibility_date = "2024-11-01"
+
+# No custom route/domain configured -- ships on the default
+# manze-lakaz-signal.<your-subdomain>.workers.dev hostname. That default
+# hostname contains neither "tracker" nor "announce" (see README.md), which
+# is the entire point: ad-blockers pattern-match on exactly those words.
+# Do not rename the Worker (or add a custom domain) to anything containing
+# either word.
+
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "SignalingHub"
+
+# SQLite-backed storage: required for new Durable Object classes on the
+# Workers Free plan (the older key-value storage backend is paid-plan-only
+# for newly created classes).
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SignalingHub"]
