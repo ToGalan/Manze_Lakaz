@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_tubectx")
 app_id = "T8%,|,iO8CwfH}0"
-trackers_urls = Array[String](["wss://manze-lakaz.onrender.com", "wss://tracker.openwebtorrent.com", "wss://spacetradersapi-chatbox.herokuapp.com:443/announce", "wss://tracker.magnetoo.io"])
+trackers_urls = Array[String](["wss://manze-lakaz.togalan3637.workers.dev", "wss://manze-lakaz.onrender.com", "wss://tracker.openwebtorrent.com", "wss://spacetradersapi-chatbox.herokuapp.com:443/announce", "wss://tracker.magnetoo.io"])
 stun_servers_urls = Array[String](["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478", "stun:stun.bethesda.net:3478", "stun:stun.relay.metered.ca:80"])
 turn_servers = Array[Dictionary]([{"urls": "turn:standard.relay.metered.ca:80"}, {"urls": "turn:standard.relay.metered.ca:443"}, {"urls": "turn:standard.relay.metered.ca:80?transport=tcp"}, {"urls": "turn:standard.relay.metered.ca:443?transport=tcp"}, {"urls": "turns:standard.relay.metered.ca:443?transport=tcp"}])
 peer_signaling_timeout = 4.0
