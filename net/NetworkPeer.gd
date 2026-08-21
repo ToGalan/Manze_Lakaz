@@ -34,6 +34,20 @@ signal connection_error(message: String)   # create/join failed, or signaling br
 
 const TUBE_CONTEXT := preload("res://net/manze_lakaz_tube_context.tres")
 
+## TURN username/credential are secrets and are deliberately NOT stored in
+## TUBE_CONTEXT's .tres (a previous version had them committed in plaintext
+## in this public repo, letting anyone drain the free relay quota -- do not
+## reintroduce that). _apply_turn_credentials() injects them into
+## TUBE_CONTEXT.turn_servers at runtime instead; see that function for
+## where they're actually read from.
+##
+## Local, gitignored file where a credential pair can be dropped for a
+## desktop/editor run or to be bundled into a web export (browsers have no
+## environment variables at runtime, so the env-var path alone can't cover
+## that target). Two lines: username, then credential. See
+## net/turn_credentials.example.txt for the expected shape.
+const _TURN_CREDENTIALS_LOCAL_FILE := "res://net/turn_credentials.local.txt"
+
 var authority: ServerAuthority = null # non-null only on the hosting process
 var db: CardDatabase
 var my_token: String = ""
@@ -47,6 +61,8 @@ var tube_client: TubeClient
 # ===========================================================================
 
 func _ready() -> void:
+	_apply_turn_credentials()
+
 	# TubeClient must be in the tree to function and must not be removed
 	# while a session is open; NetworkPeer is an autoload that outlives
 	# every scene, so it's the natural permanent home for it.
@@ -70,6 +86,61 @@ func _ready() -> void:
 	tube_client.peer_refused.connect(_on_peer_refused)
 	tube_client.peer_disconnected.connect(_on_peer_disconnected)
 	add_child(tube_client)
+
+## Fills in TUBE_CONTEXT.turn_servers' username/credential at runtime,
+## checked in this order: TURN_USERNAME/TURN_CREDENTIAL environment
+## variables first (set by a desktop shell or a CI/build pipeline), then
+## _TURN_CREDENTIALS_LOCAL_FILE (needed for a web export -- OS.get_environment()
+## is always empty in an exported HTML5 build, since browsers have no
+## environment variables to read). If neither source has both values, every
+## entry in turn_servers is dropped entirely rather than left with empty
+## credentials -- an unauthenticated TURN entry can't possibly connect
+## anyway, and shipping one silently would be indistinguishable from a real
+## connectivity bug, whereas dropping it visibly degrades to STUN-only
+## (works for most players; just not the ones on UDP-blocking/symmetric-NAT
+## networks that specifically need a relay) with a clear log line saying why.
+func _apply_turn_credentials() -> void:
+	var username := OS.get_environment("TURN_USERNAME")
+	var credential := OS.get_environment("TURN_CREDENTIAL")
+
+	if username.is_empty() or credential.is_empty():
+		var from_file := _read_turn_credentials_file()
+		username = from_file[0]
+		credential = from_file[1]
+
+	if username.is_empty() or credential.is_empty():
+		push_warning("NetworkPeer: no TURN credentials found (set TURN_USERNAME/TURN_CREDENTIAL env vars, or drop them in %s) -- falling back to STUN-only. Players on networks that block plain UDP (corporate wifi, some mobile carriers/routers) will likely be unable to connect." % _TURN_CREDENTIALS_LOCAL_FILE)
+		# .clear(), not "= []" -- TUBE_CONTEXT is a const, and GDScript
+		# rejects an assignment through a const's property path even though
+		# the property itself (turn_servers, on the Resource TUBE_CONTEXT
+		# refers to) is perfectly mutable. Mutating the existing Array
+		# in place sidesteps that; the const only ever pins the TUBE_CONTEXT
+		# reference itself, never the object's own contents.
+		TUBE_CONTEXT.turn_servers.clear()
+		return
+
+	for turn_server in TUBE_CONTEXT.turn_servers:
+		turn_server["username"] = username
+		turn_server["credential"] = credential
+
+## Reads a two-line "username\ncredential" pair from
+## _TURN_CREDENTIALS_LOCAL_FILE. Returns ["", ""] if the file is missing,
+## unreadable, or short a line -- callers treat that the same as "not
+## configured", not as an error, since running without the local file
+## (relying on the env vars instead, or on neither) is a normal setup.
+func _read_turn_credentials_file() -> Array:
+	if not FileAccess.file_exists(_TURN_CREDENTIALS_LOCAL_FILE):
+		return ["", ""]
+
+	var f := FileAccess.open(_TURN_CREDENTIALS_LOCAL_FILE, FileAccess.READ)
+	if f == null:
+		return ["", ""]
+
+	var lines := f.get_as_text().split("\n")
+	if lines.size() < 2:
+		return ["", ""]
+
+	return [lines[0].strip_edges(), lines[1].strip_edges()]
 
 ## Starts hosting: constructs ServerAuthority synchronously (it doesn't
 ## need a live connection yet, only the peer_node reference), same as the

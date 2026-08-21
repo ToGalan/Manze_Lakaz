@@ -19,3 +19,11 @@ addons/webrtc_native/lib/~*
 # by Claude Code's own naming convention, not meant to be shared.
 .claude/settings.local.json
 
+# TURN relay username/credential -- a real secret (see
+# NetworkPeer._apply_turn_credentials()), never committed. Copy
+# net/turn_credentials.example.txt to this filename and fill in your own
+# pair, or set TURN_USERNAME/TURN_CREDENTIAL env vars instead (that path
+# doesn't need this file, but a web export does -- browsers have no env
+# vars at runtime).
+net/turn_credentials.local.txt
+
