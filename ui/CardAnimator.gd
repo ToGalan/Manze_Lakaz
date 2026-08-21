@@ -10,7 +10,11 @@ const CARD_SCENE := preload("res://ui/components/CardFace.tscn")
 const GHOST_SIZE := Vector2(92, 124)
 
 ## style: "deal", "draw", "attach", "discard", or "steal".
-static func fly(layer: Control, from_global: Vector2, to_global: Vector2, display_name: String, category_key: String, style: String, def_id: String = "") -> void:
+## Returns the driving Tween so a caller that needs to gate something on the
+## animation actually finishing (e.g. GameScreen delaying the hand-off to
+## the AI-thinking overlay) can await its "finished" signal -- most callers
+## still just fire-and-forget and ignore the return value.
+static func fly(layer: Control, from_global: Vector2, to_global: Vector2, display_name: String, category_key: String, style: String, def_id: String = "") -> Tween:
 	var ghost: CardFace = CARD_SCENE.instantiate()
 	layer.add_child(ghost)
 	ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -37,6 +41,7 @@ static func fly(layer: Control, from_global: Vector2, to_global: Vector2, displa
 			_animate_draw(tween, ghost, to_global)
 
 	tween.finished.connect(ghost.queue_free)
+	return tween
 
 static func _target_top_left(to_global: Vector2) -> Vector2:
 	return to_global - GHOST_SIZE * 0.5

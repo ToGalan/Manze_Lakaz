@@ -235,6 +235,17 @@ var prompt_buttons_box: HBoxContainer
 var hand_fan: HandFan
 var animation_layer: Control
 
+## Set by the human action handlers (_on_draw_pressed, _apply_attach_action,
+## etc.) right after they start a CardAnimator.fly() ghost, so
+## _advance_ui_after_state_change() can await it before hiding the board --
+## otherwise the AI-thinking overlay (or a pass-device screen) can hide the
+## table/hand out from under a still-flying card, since submit_action()
+## resolves the state change synchronously, same frame as the animation
+## starts. Consumed (read once, reset to null) on every call regardless of
+## whether that call actually awaits it, so a stale reference never leaks
+## into an unrelated later transition.
+var _pending_action_tween: Tween = null
+
 var overlay_layer: Control
 var main_menu_overlay: PanelContainer
 var how_to_play_overlay: PanelContainer
@@ -1999,6 +2010,12 @@ func _try_reconnect_once(session_id: String, token: String) -> bool:
 
 func _advance_ui_after_state_change() -> void:
 	state = session.get_state()
+	# Read once and cleared here regardless of which branch below actually
+	# ends up awaiting it, so a tween from an action that DIDN'T hide the
+	# board (e.g. the same human continuing straight into a forced discard)
+	# never leaks forward and gets awaited on some later, unrelated transition.
+	var pending_tween := _pending_action_tween
+	_pending_action_tween = null
 	# Invalidates any turn timer armed for a previous call to this function
 	# (a stale one's captured token can no longer match) -- only the two
 	# branches below that actually show the local human's own turn (one
@@ -2041,6 +2058,7 @@ func _advance_ui_after_state_change() -> void:
 
 	var hot_seat := session as LocalHotSeatSession
 	if hot_seat.is_seat_ai(state.current_player_index):
+		await _await_card_animation(pending_tween)
 		_show_ai_thinking()
 		return
 
@@ -2048,6 +2066,7 @@ func _advance_ui_after_state_change() -> void:
 		selected_card_id = -1
 		selected_move_prep_id = -1
 		_pending_joker_choices = []
+		await _await_card_animation(pending_tween)
 		_show_pass_device()
 		return
 
@@ -2057,6 +2076,17 @@ func _advance_ui_after_state_change() -> void:
 		_show_draft()
 	else:
 		_show_play()
+
+## Waits out a still-flying CardAnimator ghost before the caller hides the
+## board (AI-thinking overlay or a pass-device screen) -- otherwise the
+## table/hand vanish out from under a card that's still mid-animation,
+## since submit_action() resolves the state change synchronously, same
+## frame the animation starts. A no-op when there's nothing to wait for
+## (draft picks, forced continuations, an AI's own moves -- none of which
+## animate a ghost) or if the tween already finished/was freed.
+func _await_card_animation(tween: Tween) -> void:
+	if tween != null and is_instance_valid(tween) and tween.is_valid():
+		await tween.finished
 
 ## Also doubles as the reset point for network mode's display-only
 ## countdown (see _arm_network_turn_timer_display()) -- every caller here
@@ -2809,7 +2839,7 @@ func _on_cancel_move_pressed() -> void:
 func _on_draw_pressed() -> void:
 	var from := table_surface.get_deck_marker_global_position()
 	var to := hand_fan.get_fan_center_global_position()
-	CardAnimator.fly(animation_layer, from, to, "", "back", "draw")
+	_pending_action_tween = CardAnimator.fly(animation_layer, from, to, "", "back", "draw")
 
 	selected_card_id = -1
 	var action := Action.make_draw(_viewer_index())
@@ -2829,7 +2859,7 @@ func _on_take_discard_pressed() -> void:
 
 	var from := table_surface.get_discard_marker_global_position()
 	var to := hand_fan.get_fan_center_global_position()
-	CardAnimator.fly(animation_layer, from, to, label, cat, "draw", top.def_id)
+	_pending_action_tween = CardAnimator.fly(animation_layer, from, to, label, cat, "draw", top.def_id)
 
 	var action := Action.make_take_discard(_viewer_index())
 	var line := GameViewModel.describe_action_for_log(state, action)
@@ -2853,7 +2883,7 @@ func _on_steal_requested(target_player_index: int, target_recipe_index: int, car
 	var panel: PlayerPanel = _player_panel_nodes.get(target_player_index)
 	var from: Vector2 = (panel.global_position + panel.size * 0.5) if panel != null else get_global_rect().get_center()
 	var to := hand_fan.get_fan_center_global_position()
-	CardAnimator.fly(animation_layer, from, to, label, cat, "steal", card.def_id if card != null else "")
+	_pending_action_tween = CardAnimator.fly(animation_layer, from, to, label, cat, "steal", card.def_id if card != null else "")
 
 	var line := GameViewModel.describe_action_for_log(state, action)
 	selected_card_id = -1
@@ -2899,7 +2929,7 @@ func _apply_attach_action(action: Action, panel_node: Control) -> void:
 
 	var from := hand_fan.get_card_global_position(action.card_instance_id)
 	var to: Vector2 = (panel_node.global_position + panel_node.size * 0.5) if panel_node != null else from
-	CardAnimator.fly(animation_layer, from, to, label, cat, "attach", card.def_id if card != null else "")
+	_pending_action_tween = CardAnimator.fly(animation_layer, from, to, label, cat, "attach", card.def_id if card != null else "")
 
 	var line := GameViewModel.describe_action_for_log(state, action)
 	selected_card_id = -1
@@ -2921,7 +2951,7 @@ func _on_move_target_pressed(recipe_index: int, panel_node: Control) -> void:
 
 	var from: Vector2 = (from_panel.global_position + from_panel.size * 0.5) if from_panel != null else get_global_rect().get_center()
 	var to: Vector2 = panel_node.global_position + panel_node.size * 0.5
-	CardAnimator.fly(animation_layer, from, to, label, cat, "attach", card.def_id if card != null else "")
+	_pending_action_tween = CardAnimator.fly(animation_layer, from, to, label, cat, "attach", card.def_id if card != null else "")
 
 	var line := GameViewModel.describe_action_for_log(state, action)
 	selected_move_prep_id = -1
@@ -2937,7 +2967,7 @@ func _on_discard_pressed(card_instance_id: int) -> void:
 
 	var from := hand_fan.get_card_global_position(card_instance_id)
 	var to := table_surface.get_discard_marker_global_position()
-	CardAnimator.fly(animation_layer, from, to, label, cat, "discard", card.def_id if card != null else "")
+	_pending_action_tween = CardAnimator.fly(animation_layer, from, to, label, cat, "discard", card.def_id if card != null else "")
 
 	var action := Action.make_discard(_viewer_index(), card_instance_id)
 	var line := GameViewModel.describe_action_for_log(state, action)
