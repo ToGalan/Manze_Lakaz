@@ -151,8 +151,13 @@ var _draft_keep_sfx_played: bool = false
 
 ## "Dealing everyone their recipe offers" -- played once when the draft
 ## screen is first shown for a new game (see _show_draft()), not tied to
-## MOVE_PREPARATION at all despite the clip's filename.
+## MOVE_PREPARATION at all despite the clip's filename. Trimmed at both
+## ends -- start 2s in and stop 3s before the source clip's own end
+## (12.72s, per AudioStream.get_length()) -- to skip a slow lead-in/fade
+## the untrimmed clip had.
 const DRAFT_BEGIN_SFX := preload("res://sfx/747805__hope_sounds_3__countingplayingcards.wav")
+const DRAFT_BEGIN_SFX_START_OFFSET := 2.0
+const DRAFT_BEGIN_SFX_MAX_SECONDS := 7.7245 # source length (12.7245) - start offset (2.0) - end trim (3.0)
 var _draft_begin_sfx_played: bool = false
 
 ## A small round-robin pool, not one shared player: one-shot sfx
@@ -733,7 +738,13 @@ func _submit_action(action: Action) -> void:
 ## _unlock_audio() -- since play() into a still-suspended browser
 ## AudioContext is silently dropped anyway; a fired-but-lost cue would be
 ## indistinguishable from a real bug.
-func _play_sfx(stream: AudioStream, max_seconds: float = 0.0) -> void:
+##
+## start_offset, if given, seeks into the clip before playback starts --
+## e.g. skipping a slow lead-in so the cue reads as immediate. Combine with
+## max_seconds (which counts from when playback starts, i.e. already
+## relative to start_offset, not to the clip's own beginning) to trim both
+## ends, as DRAFT_BEGIN_SFX does.
+func _play_sfx(stream: AudioStream, max_seconds: float = 0.0, start_offset: float = 0.0) -> void:
 	if stream == null or not _audio_unlocked:
 		return
 	for player in _sfx_pool:
@@ -751,7 +762,7 @@ func _play_sfx(stream: AudioStream, max_seconds: float = 0.0) -> void:
 
 	var player: AudioStreamPlayer = _sfx_pool[index]
 	player.stream = stream
-	player.play()
+	player.play(start_offset)
 	_sfx_pool_tokens[index] += 1
 	if max_seconds > 0.0:
 		var token: int = _sfx_pool_tokens[index]
@@ -2410,7 +2421,7 @@ func _show_draft() -> void:
 	ui_mode = UiMode.DRAFT
 	if not _draft_begin_sfx_played:
 		_draft_begin_sfx_played = true
-		_play_sfx(DRAFT_BEGIN_SFX)
+		_play_sfx(DRAFT_BEGIN_SFX, DRAFT_BEGIN_SFX_MAX_SECONDS, DRAFT_BEGIN_SFX_START_OFFSET)
 	_clear_children(draft_overlay)
 	var box := _overlay_content_box(draft_overlay)
 
