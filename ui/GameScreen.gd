@@ -228,6 +228,7 @@ var _prep_ambience_started: bool = false
 
 # Static structure, built once in _ready().
 var main_layout: VBoxContainer
+var top_bar_scroll: ScrollContainer
 var top_bar: HFlowContainer
 var table_surface: TableSurface
 var log_toggle_button: Button
@@ -430,8 +431,26 @@ func _build_static_ui() -> void:
 	main_layout = VBoxContainer.new()
 	outer_margin.add_child(main_layout)
 
+	# ScrollContainer, not top_bar added directly: it reports its own fixed
+	# minimum height (set in _on_screen_resized()) regardless of top_bar's
+	# actual content, capping how much of main_layout's total height
+	# top_bar can ever claim. Without this, an opponent who's attached
+	# several cards across both their recipes grows their PlayerPanel tall
+	# enough (see PlayerPanel.update()'s per-recipe mini-card rows) to push
+	# top_bar's own height up -- since top_bar is the only main_layout row
+	# NOT size_flags_vertical=EXPAND_FILL, that growth comes directly out
+	# of `middle` (table_surface)'s share, and with no scroll on the
+	# recipe-panel grid either (removed by request), the viewer's own
+	# recipe panel ends up spilling past the table and behind the prompt
+	# bar below it -- looked exactly like the recipe panel and the table
+	# itself were getting cropped/shrunk.
+	top_bar_scroll = ScrollContainer.new()
+	top_bar_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	top_bar_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	main_layout.add_child(top_bar_scroll)
+
 	top_bar = HFlowContainer.new()
-	main_layout.add_child(top_bar)
+	top_bar_scroll.add_child(top_bar)
 
 	var middle := HBoxContainer.new()
 	middle.theme_type_variation = "WideHBox"
@@ -581,6 +600,12 @@ func _on_screen_resized() -> void:
 	hand_fan.custom_minimum_size.y = clampf(size.y * 0.27, 165.0, 240.0) - 20.0
 	prompt_panel.custom_minimum_size.y = clampf(size.y * 0.09, 48.0, 64.0)
 	log_panel.custom_minimum_size.x = clampf(size.x * 0.22, 160.0, 320.0)
+	# Comfortably fits a normal row of PlayerPanels with nothing (or one
+	# recipe's worth of cards) attached yet -- no visible scrollbar in the
+	# common case. Only kicks in once opponents' accumulated attachments
+	# genuinely need more room than that; see top_bar_scroll's own comment
+	# in _ready() for why this cap exists at all.
+	top_bar_scroll.custom_minimum_size.y = clampf(size.y * 0.20, 130.0, 180.0)
 
 func _build_overlays() -> void:
 	overlay_layer = Control.new()
