@@ -2914,6 +2914,19 @@ func _on_joker_slot_chosen(action: Action) -> void:
 	_pending_joker_choices = []
 	_apply_attach_action(action, panel_node)
 
+## Where an attach/move-preparation ghost lands on a recipe panel: just
+## above its top edge, not the panel's full center. CardAnimator.fly()
+## centers the (fixed-size) ghost ON whatever point it's given -- landing
+## at the panel's center, or even near its title, still put half the
+## ghost's height over live ingredient-list text for most of the flight,
+## which looked like the recipe panel (and, mid-transit, the deck/discard
+## piles it passed over) was getting cropped. Offsetting by exactly half
+## the ghost's own height puts its bottom edge right at the panel's top
+## edge instead: still clearly reads as "arriving at this recipe" without
+## covering any of what a player actually needs to read.
+func _recipe_panel_ghost_target(panel_node: Control) -> Vector2:
+	return panel_node.global_position + Vector2(panel_node.size.x * 0.5, -CardAnimator.GHOST_SIZE.y * 0.5)
+
 func _apply_attach_action(action: Action, panel_node: Control) -> void:
 	var player := state.players[_viewer_index()]
 	var card := player.find_in_hand(action.card_instance_id)
@@ -2921,7 +2934,7 @@ func _apply_attach_action(action: Action, panel_node: Control) -> void:
 	var cat := CardCategoryMap.category_for(card.def_id, card.category) if card != null else CardCategoryMap.PANTRY
 
 	var from := hand_fan.get_card_global_position(action.card_instance_id)
-	var to: Vector2 = (panel_node.global_position + panel_node.size * 0.5) if panel_node != null else from
+	var to: Vector2 = _recipe_panel_ghost_target(panel_node) if panel_node != null else from
 	_pending_action_tween = CardAnimator.fly(animation_layer, from, to, label, cat, "attach", card.def_id if card != null else "")
 
 	var line := GameViewModel.describe_action_for_log(state, action)
@@ -2942,8 +2955,8 @@ func _on_move_target_pressed(recipe_index: int, panel_node: Control) -> void:
 	var label := GameViewModel.card_label(card.def_id, card.category, db) if card != null else ""
 	var cat := CardCategoryMap.category_for(card.def_id, card.category) if card != null else CardCategoryMap.PREPARATION
 
-	var from: Vector2 = (from_panel.global_position + from_panel.size * 0.5) if from_panel != null else get_global_rect().get_center()
-	var to: Vector2 = panel_node.global_position + panel_node.size * 0.5
+	var from: Vector2 = _recipe_panel_ghost_target(from_panel) if from_panel != null else get_global_rect().get_center()
+	var to: Vector2 = _recipe_panel_ghost_target(panel_node)
 	_pending_action_tween = CardAnimator.fly(animation_layer, from, to, label, cat, "attach", card.def_id if card != null else "")
 
 	var line := GameViewModel.describe_action_for_log(state, action)

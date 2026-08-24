@@ -58,8 +58,9 @@ func _layout() -> void:
 	# oversized recipe no longer needs hand_fan to stay small to protect it).
 	# 0.90, not 0.82 -- less empty space above and below the fanned cards
 	# within the row's own box. Whole thing then scaled by 0.75x (1/4
-	# smaller than the original) -- 0.5x turned out too small.
-	var card_h: float = clamp(size.y * 0.90, 135.0, 285.0) * 0.75
+	# smaller than the original) -- 0.5x turned out too small. +5.0 flat
+	# on top of that per a later, separate request.
+	var card_h: float = clamp(size.y * 0.90, 135.0, 285.0) * 0.75 + 5.0
 	var card_w := card_h * 0.68
 	var max_spread_deg: float = clamp(4.0 * n, 8.0, 28.0)
 
