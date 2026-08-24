@@ -81,7 +81,11 @@ func _layout() -> void:
 
 		var t := 0.0 if n == 1 else (float(i) / float(n - 1)) * 2.0 - 1.0
 		var angle_deg := t * (max_spread_deg * 0.5)
-		var arc_lift := (1.0 - t * t) * size.y * 0.09
+		# 0.05, not 0.09 -- the arc bounce was reserving more headroom above
+		# the raised (center) cards than the now-smaller cards (see card_h's
+		# 0.75x scale above) actually need, showing up as empty space
+		# between the hand and the prompt bar above it.
+		var arc_lift := (1.0 - t * t) * size.y * 0.05
 		# 6px clear space below the card -- just enough that it doesn't
 		# look flush-cut against the row's own bottom edge.
 		var base_y := size.y - card_h - 6.0 - arc_lift

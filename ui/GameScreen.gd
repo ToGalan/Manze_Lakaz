@@ -575,7 +575,10 @@ func _on_screen_resized() -> void:
 	# the current worst case) can again spill its panel past the table's
 	# felt edge on a short viewport -- a known, accepted tradeoff, not an
 	# oversight.
-	hand_fan.custom_minimum_size.y = clampf(size.y * 0.27, 165.0, 240.0)
+	# -20.0: hand_fan gives up 20px of its own row so `middle` (table_surface
+	# + log_side, both SIZE_EXPAND_FILL) picks it up as leftover space --
+	# the table board is 20px taller as a direct result, by request.
+	hand_fan.custom_minimum_size.y = clampf(size.y * 0.27, 165.0, 240.0) - 20.0
 	prompt_panel.custom_minimum_size.y = clampf(size.y * 0.09, 48.0, 64.0)
 	log_panel.custom_minimum_size.x = clampf(size.x * 0.22, 160.0, 320.0)
 
