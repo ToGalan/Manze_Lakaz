@@ -41,7 +41,11 @@ func _init() -> void:
 	margin.add_child(center)
 
 	var row := HBoxContainer.new()
-	row.theme_type_variation = "WideHBox"
+	# TableGroupHBox (56px), not WideHBox (18px) -- own_recipes_box and
+	# piles_row each read as their own group, and need more separation
+	# from each other than either needs internally (recipe-to-recipe,
+	# deck-to-discard). See GameTheme._setup_containers().
+	row.theme_type_variation = "TableGroupHBox"
 	center.add_child(row)
 
 	own_recipes_box = HBoxContainer.new()

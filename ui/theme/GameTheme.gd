@@ -72,6 +72,15 @@ static func _setup_containers(t: Theme) -> void:
 	t.set_type_variation("WideHBox", "HBoxContainer")
 	t.set_constant("separation", "WideHBox", 18)
 
+	# Wider than WideHBox specifically for the gap BETWEEN the recipe column
+	# and the deck/discard piles on TableSurface -- those read as two
+	# distinct groups, so they need more separation than the 18px used
+	# for gaps *within* each group (between the two recipe panels, or
+	# between deck and discard) or the whole table board reads as
+	# lopsided/cramped. See TableSurface._init()'s `row`.
+	t.set_type_variation("TableGroupHBox", "HBoxContainer")
+	t.set_constant("separation", "TableGroupHBox", 56)
+
 	t.set_type_variation("WideVBox", "VBoxContainer")
 	t.set_constant("separation", "WideVBox", 16)
 
