@@ -57,8 +57,9 @@ func _layout() -> void:
 	# for why the floor scales too now (a scrollable recipe grid means an
 	# oversized recipe no longer needs hand_fan to stay small to protect it).
 	# 0.90, not 0.82 -- less empty space above and below the fanned cards
-	# within the row's own box.
-	var card_h: float = clamp(size.y * 0.90, 135.0, 285.0)
+	# within the row's own box. Whole thing then halved (0.5x) per request --
+	# smaller hand cards.
+	var card_h: float = clamp(size.y * 0.90, 135.0, 285.0) * 0.5
 	var card_w := card_h * 0.68
 	var max_spread_deg: float = clamp(4.0 * n, 8.0, 28.0)
 
