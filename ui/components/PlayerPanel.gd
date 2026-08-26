@@ -16,7 +16,13 @@ signal steal_requested(target_player_index: int, target_recipe_index: int, card_
 signal page_changed(target_player_index: int, target_recipe_index: int, new_page: int)
 
 const CARD_SCENE := preload("res://ui/components/CardFace.tscn")
-const MINI_CARD_SIZE := Vector2(56, 76)
+# Smaller than the original 56x76: each attached-card row's height (see
+# _build_mini_card_row()) comes straight from this, so a taller value here
+# means fewer of an opponent's recipe rows fit within top_bar_scroll's
+# height cap (see GameScreen._on_screen_resized()) before it starts
+# needing to scroll to see the rest -- shrinking this instead of the cap
+# keeps more of an opponent's board visible without scrolling.
+const MINI_CARD_SIZE := Vector2(44, 60)
 const STEAL_ICON_RADIUS := 5.0
 const STEAL_ICON_SPACING := 14.0
 ## A hard-tier recipe can end up with 10+ ingredient/preparation cards
