@@ -450,6 +450,16 @@ func _build_static_ui() -> void:
 	main_layout.add_child(top_bar_scroll)
 
 	top_bar = HFlowContainer.new()
+	# SIZE_EXPAND_FILL, not left at the default: a ScrollContainer only
+	# stretches a scroll-DISABLED axis to match its own size when the child
+	# explicitly opts in via this flag -- otherwise it sizes the child to
+	# its own natural minimum on that axis too (same as the scrollable
+	# axis), which for an HFlowContainer with no width to flow within means
+	# every PlayerPanel wraps onto its own line instead of flowing side by
+	# side. That's what caused the "other players cropped" regression: two
+	# panels stacked vertically instead of side by side blew straight
+	# through top_bar_scroll's height cap.
+	top_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top_bar_scroll.add_child(top_bar)
 
 	var middle := HBoxContainer.new()
